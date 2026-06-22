@@ -1,7 +1,7 @@
 import { Backtest } from '../src';
 import { Strategy } from '../src/strategy';
 import { Stats } from '../src/stats';
-import { StatsIndex } from '../src/enums';
+import { StatsIndex, TradeLogColumn } from '../src/enums';
 import { SmaCross } from './sma-cross.strategy';
 
 class BuyAndHold extends Strategy {
@@ -11,8 +11,29 @@ class BuyAndHold extends Strategy {
   }
 }
 
+class MultipleOpenTrades extends Strategy {
+  init() { /* no-op */ }
+  next(ctx: { index: number }) {
+    if (ctx.index === 0 || ctx.index === 1) this.buy({ size: 100 });
+  }
+}
+
+class FinalBarMarketOrderWithOpenTrades extends Strategy {
+  init() { /* no-op */ }
+  next(ctx: { index: number }) {
+    if (ctx.index === 0 || ctx.index === 1) this.buy({ size: 100, tag: { source: 'cleanup' } });
+    if (ctx.index === 3) this.buy({ size: 100, tag: { source: 'final-bar' } });
+  }
+}
+
 describe('Backtest', () => {
   const data = require('./fixtures/2330.json');
+  const cleanupData = [
+    { date: '2024-01-01', open: 100, high: 100, low: 100, close: 100 },
+    { date: '2024-01-02', open: 100, high: 100, low: 100, close: 100 },
+    { date: '2024-01-03', open: 120, high: 120, low: 120, close: 120 },
+    { date: '2024-01-04', open: 130, high: 130, low: 130, close: 130 },
+  ];
 
   describe('constructor()', () => {
     beforeEach(() => {
@@ -75,6 +96,29 @@ describe('Backtest', () => {
       const backtest = new Backtest(data, BuyAndHold, { cash: 1000000 });
       const stats = await backtest.run();
       expect(stats.tradeLog?.length).toBe(1);
+    });
+
+    it('should auto-close multiple open trades that remain at the last bar', async () => {
+      const backtest = new Backtest(cleanupData, MultipleOpenTrades, { cash: 1000000 });
+      const stats = await backtest.run();
+
+      expect(stats.results?.[StatsIndex.Trades]).toBe(2);
+      expect(stats.tradeLog?.length).toBe(2);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.PnL])).toEqual([3000, 1000]);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.ExitBar])).toEqual([3, 3]);
+    });
+
+    it('should not skip cleanup close orders after a final-bar market order', async () => {
+      const backtest = new Backtest(cleanupData, FinalBarMarketOrderWithOpenTrades, { cash: 1000000 });
+      const stats = await backtest.run();
+
+      expect(stats.results?.[StatsIndex.Trades]).toBe(2);
+      expect(stats.tradeLog?.length).toBe(2);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.PnL])).toEqual([3000, 1000]);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.Tag])).toEqual([
+        { source: 'cleanup' },
+        { source: 'cleanup' },
+      ]);
     });
   });
 

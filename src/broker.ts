@@ -151,9 +151,7 @@ export class Broker {
     const prevClose = i > 0 ? this.data.close[i - 1] : this.data.close[i];
     let reprocessOrders = false;
 
-    for (let i = 0; i < this.orders.length; i++) {
-      const order = this.orders[i];
-
+    for (const order of [...this.orders]) {
       /* istanbul ignore if */
       if (!this.orders.includes(order)) continue;
 
