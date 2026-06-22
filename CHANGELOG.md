@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.1](https://github.com/chunkai1312/node-backtesting/compare/v1.0.0...v1.0.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* prevent broker skipping queued orders ([cb93d93](https://github.com/chunkai1312/node-backtesting/commit/cb93d93c7153e02a9345a661be0929da1f9fe109))
+
 ## [1.0.0](https://github.com/chunkai1312/node-backtesting/compare/v0.2.0...v1.0.0) (2026-05-03)
 
 
