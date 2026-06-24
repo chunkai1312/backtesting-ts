@@ -40,7 +40,7 @@ Some examples write HTML files into the project root:
 
 - `01-quickstart.ts` — would write `output.html` if you uncomment `stats.plot()`.
 - `04-optimize-grid.ts` — writes `optimize-heatmap.html`.
-- `05-multi-panel-plot.ts` — writes `output.html` with six stacked Plotly panels.
+- `05-multi-panel-plot.ts` — writes `output.html` with the standard Plotly chart plus a ROC subplot after volume.
 
 Open these in any modern browser. The plot's pan/zoom and hover-line are
 synchronized across panels.

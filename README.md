@@ -69,7 +69,7 @@ const backtest = new Backtest(data, SmaCross, {
 backtest.run()        // run the backtest
   .then(results => {
     results.print();  // print the results
-    results.plot();   // plot the equity curve
+    results.plot();   // plot the backtest chart
   });
 ```
 
@@ -83,34 +83,34 @@ Results in:
 │ Start                  │ '2020-01-02'            │
 │ End                    │ '2022-12-30'            │
 │ Duration               │ 1093                    │
-│ Exposure Time [%]      │ 55.102041               │
-│ Equity Final [$]       │ 1105000                 │
+│ Exposure Time [%]      │ 51.70068                │
+│ Equity Final [$]       │ 1107500                 │
 │ Equity Peak [$]        │ 1378000                 │
-│ Return [%]             │ 10.5                    │
+│ Return [%]             │ 10.75                   │
 │ Buy & Hold Return [%]  │ 32.300885               │
-│ Return (Ann.) [%]      │ 3.482537                │
-│ Volatility (Ann.) [%]  │ 8.204114                │
-│ Sharpe Ratio           │ 0.424487                │
-│ Sortino Ratio          │ 0.660431                │
-│ Calmar Ratio           │ 0.175785                │
+│ Return (Ann.) [%]      │ 3.562748                │
+│ Volatility (Ann.) [%]  │ 8.21145                 │
+│ Sharpe Ratio           │ 0.433876                │
+│ Sortino Ratio          │ 0.675642                │
+│ Calmar Ratio           │ 0.179834                │
 │ Max. Drawdown [%]      │ -19.811321              │
 │ Avg. Drawdown [%]      │ -2.241326               │
 │ Max. Drawdown Duration │ 708                     │
 │ Avg. Drawdown Duration │ 54                      │
-│ # Trades               │ 6                       │
-│ Win Rate [%]           │ 16.666667               │
+│ # Trades               │ 5                       │
+│ Win Rate [%]           │ 20                      │
 │ Best Trade [%]         │ 102.3729                │
-│ Worst Trade [%]        │ -10.4418                │
-│ Avg. Trade [%]         │ 5.718878                │
+│ Worst Trade [%]        │ -9.6712                 │
+│ Avg. Trade [%]         │ 9.285359                │
 │ Max. Trade Duration    │ 322                     │
-│ Avg. Trade Duration    │ 100                     │
-│ Profit Factor          │ 2.880822                │
-│ Expectancy [%]         │ 11.139483               │
-│ SQN                    │ 0.305807                │
+│ Avg. Trade Duration    │ 114                     │
+│ Profit Factor          │ 4.079544                │
+│ Expectancy [%]         │ 15.45574                │
+│ SQN                    │ 0.461847                │
 │ Avg. Win [%]           │ 102.3729                │
-│ Avg. Loss [%]          │ -7.1072                 │
-│ Win/Loss Ratio         │ 14.404111               │
-│ Kelly Criterion        │ 0.108813                │
+│ Avg. Loss [%]          │ -6.27355                │
+│ Win/Loss Ratio         │ 16.318177               │
+│ Kelly Criterion        │ 0.150975                │
 └────────────────────────┴─────────────────────────┘
 ```
 
@@ -203,8 +203,22 @@ const backtest = new Backtest(data, SmaCross, {
 backtest.run()        // run the backtest
   .then(results => {
     results.print();  // print the results
-    results.plot();   // plot the equity curve
+    results.plot();   // plot the backtest chart
   });
+```
+
+By default, open trades that remain active at the end of the backtest are not
+force-closed into `Stats.tradeLog` or trade-based statistics, matching
+`backtesting.py`'s `finalize_trades: false` behavior. The final equity curve
+still reflects mark-to-market value through the last bar. To preserve the older
+node-backtesting behavior and include final open trades in `# Trades`, set:
+
+```js
+const backtest = new Backtest(data, SmaCross, {
+  cash: 1000000,
+  tradeOnClose: true,
+  finalizeTrades: true,
+});
 ```
 
 ### Optimizing the parameters
@@ -225,7 +239,7 @@ backtest.optimize({
 })
   .then(({ best, bestParams, bestScore, heatmap }) => {
     best.print();                    // print stats of the winning combo
-    best.plot();                     // plot equity curve of the winning combo
+    best.plot();                     // plot the winning combo chart
     console.log(bestParams, bestScore);
   });
 ```
@@ -244,25 +258,53 @@ backtest.optimize({
 
 ### Plotting
 
-`Backtest.plot()` (or `stats.plot()`) writes a self-contained HTML file with up to five hover-synchronized panels via [Plotly.js](https://plotly.com/javascript/):
+`Backtest.plot(options?)` (or `stats.plot(options?)`) writes a self-contained,
+`backtesting.py`-like HTML chart via [Plotly.js](https://plotly.com/javascript/).
+The default panel order is **Equity [%] → Profit / Loss → OHLC → Volume**.
+Optional return, drawdown, and non-overlay indicator panels are synchronized on the
+same time axis; non-overlay indicators are appended after volume and reversed by
+default to match `backtesting.py`.
 
-1. **Price** — candlestick chart with indicator overlays and trade entry/exit markers
-2. **Volume** — per-bar volume bars
-3. **Equity** — equity-curve line
-4. **Drawdown** — drawdown percentage with fill
-5. **PnL** — per-trade return percentage, color-coded by sign
-
-Panels can be toggled individually via `PlottingOptions`:
+`PlottingOptions` follows the strict camelCase parity surface:
 
 ```js
-backtest.plot({ plotVolume: false, plotDrawdown: false, openBrowser: false, filename: 'result.html' });
+backtest.plot({
+  filename: 'result.html',
+  openBrowser: false,
+  plotWidth: 1200,
+  plotReturn: true,
+  plotDrawdown: true,
+  plotPL: true,
+  plotVolume: true,
+  plotTrades: true,
+  relativeEquity: true,
+  superimpose: true, // or false / 'W' / 'M' / 'Q' / 'Y'
+  resample: true,    // keeps raw bars up to 10,000 candles
+  showLegend: true,
+});
 ```
+
+Defaults: `plotEquity: true`, `plotReturn: false`, `plotPL: true`,
+`plotVolume: true`, `plotDrawdown: false`, `plotTrades: true`,
+`smoothEquity: false`, `relativeEquity: true`, `superimpose: true`,
+`resample: true`, `reverseIndicators: true`, and `showLegend: true`.
+
+Breaking migration notes:
+
+- `plotPrice` was removed; the OHLC panel is always rendered.
+- `plotSuperimposedOhlc` was replaced by `superimpose`.
+- `superimposedOhlcRule` was replaced by `superimpose: 'W' | 'M' | 'Q' | 'Y'`.
+- `plotPL` controls the profit/loss panel; `plotTrades` controls trade segments on the OHLC panel.
+- Final open trades are no longer force-closed by default; set `finalizeTrades: true` on `BacktestOptions` to include them in trade statistics and plotted trade counts.
+- Numeric `commission` now matches `backtesting.py`: entry/exit prices stay unadjusted, commissions are charged as cash fees on both entry and exit, relative order sizing accounts for per-unit commission, and closed-trade P/L / return are reported net of both fees.
 
 Indicators registered with `addIndicator(name, values, options)` honor:
 
 - `overlay: true` (default) — draw on the price panel
-- `overlay: false` — render in its own subplot between the price and volume panels (useful for RSI / MACD)
-- `color` — line color in any CSS-compatible format
+- `overlay: false` — render in its own subplot after volume (useful for RSI / MACD)
+- `color` — a CSS color string, or an array of colors for multi-line indicators
+- `scatter: true` — render markers instead of a continuous line
+- `plot: false` — hide non-overlay indicators; overlay indicators start as legend-only traces
 
 For optimization runs, `plotHeatmap(grid)` writes a separate 2D parameter heatmap:
 

@@ -113,9 +113,14 @@
 
 ### `backtest.plot()`
 
+- `options` {PlottingOptions} _選填。_ 會轉交給 `Stats.plot()` 的繪圖選項。
 - 回傳：{this}
 
-繪製回測運行的權益曲線。
+輸出一個自含的 Plotly HTML 回測圖表。預設 layout 採接近 `backtesting.py` 的 panel
+順序：equity、profit / loss、OHLC、volume。支援的繪圖選項包含 `filename`、
+`openBrowser`、`plotWidth`、`plotEquity`、`plotReturn`、`plotPL`、`plotVolume`、
+`plotDrawdown`、`plotTrades`、`smoothEquity`、`relativeEquity`、`superimpose`、
+`resample`、`reverseIndicators`、`showLegend`。
 
 ## Class: Strategy
 
@@ -169,8 +174,10 @@
 - `name` {string} 指標名稱。
 - `values` {number[] | Record<string, number>[]} 指標值；短於 `data.length` 時左側以 `null` 補齊。
 - `options` {Object} _選填。_ 提供給 `Plotting` 的繪製提示。
-  - `overlay` {boolean} — `true`（預設）將指標畫在價格面板；`false` 則放在獨立副圖。
-  - `color` {string} — Plotly 線條顏色（任何 CSS 顏色字串）。
+  - `overlay` {boolean} — `true`（預設）將指標畫在 OHLC panel；`false` 則放在 volume 之後的獨立副圖。
+  - `color` {string | string[]} — Plotly 線條 / marker 顏色；多線指標可提供每條線的顏色。
+  - `scatter` {boolean} — `true` 時以 marker 而非線條呈現。
+  - `plot` {boolean} — `false` 時隱藏非 overlay 指標，overlay 指標則以 legend-only trace 呈現。
 
 新增一個指標。繪圖選項與指標值分開儲存，`getIndicator()` 仍只回傳值。
 
@@ -183,7 +190,7 @@
 ### `strategy.getIndicatorOptions(name)`
 
 - `name` {string} 指標名稱。
-- 回傳：`{ overlay: boolean; color: string } | undefined`
+- 回傳：`{ overlay: boolean; color: string | string[]; scatter: boolean; plot: boolean } | undefined`
 
 取得 `addIndicator()` 提供的繪圖選項；若名稱不存在回 `undefined`。
 

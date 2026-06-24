@@ -2,15 +2,14 @@
  * 05 — Multi-panel plot
  *
  * Registers a momentum oscillator (rate-of-change) as a non-overlay indicator,
- * which forces `Plotting` to allocate it its own subplot between the price and
- * volume panels. The resulting HTML therefore has six stacked panels:
+ * which forces `Plotting` to allocate its own subplot after the volume panel.
+ * The resulting HTML therefore has five default-style stacked panels:
  *
- *   Price (candlestick + SMA overlays + trade markers)
- *   ROC (oscillator subplot)
+ *   Equity [%]
+ *   Profit / Loss
+ *   OHLC (candlestick + SMA overlays + trade markers)
  *   Volume
- *   Equity
- *   Drawdown
- *   Trade PnL
+ *   ROC(12) (oscillator subplot)
  *
  *   yarn example examples/05-multi-panel-plot.ts
  */
@@ -39,7 +38,7 @@ class SmaWithRoc extends Strategy {
     this.addIndicator('SMA20', sma20, { overlay: true, color: '#1f77b4' });
     this.addIndicator('SMA60', sma60, { overlay: true, color: '#ff7f0e' });
 
-    // Force a separate subplot — overlay: false:
+    // Force a separate subplot after volume — overlay: false:
     const roc = ROC(close, this.params.rocPeriod);
     this.addIndicator('ROC(12)', roc, { overlay: false, color: '#2ca02c' });
 
@@ -60,8 +59,8 @@ async function main(): Promise<void> {
   stats.print();
   // Write the HTML without auto-opening — easier when running headlessly.
   // Set `openBrowser: true` (default) to launch automatically.
-  backtest.plot();
-  console.log('Wrote output.html with six stacked panels (ROC is its own subplot).');
+  backtest.plot({ openBrowser: false, filename: 'output.html' });
+  console.log('Wrote output.html with an ROC subplot after volume.');
 }
 
 if (require.main === module) {

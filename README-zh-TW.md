@@ -68,7 +68,7 @@ const backtest = new Backtest(data, SmaCross, {
 backtest.run()        // run the backtest
   .then(results => {
     results.print();  // print the results
-    results.plot();   // plot the equity curve
+    results.plot();   // 繪製回測圖表
   });
 ```
 
@@ -82,34 +82,34 @@ backtest.run()        // run the backtest
 │ Start                  │ '2020-01-02'            │
 │ End                    │ '2022-12-30'            │
 │ Duration               │ 1093                    │
-│ Exposure Time [%]      │ 55.102041               │
-│ Equity Final [$]       │ 1105000                 │
+│ Exposure Time [%]      │ 51.70068                │
+│ Equity Final [$]       │ 1107500                 │
 │ Equity Peak [$]        │ 1378000                 │
-│ Return [%]             │ 10.5                    │
+│ Return [%]             │ 10.75                   │
 │ Buy & Hold Return [%]  │ 32.300885               │
-│ Return (Ann.) [%]      │ 3.482537                │
-│ Volatility (Ann.) [%]  │ 8.204114                │
-│ Sharpe Ratio           │ 0.424487                │
-│ Sortino Ratio          │ 0.660431                │
-│ Calmar Ratio           │ 0.175785                │
+│ Return (Ann.) [%]      │ 3.562748                │
+│ Volatility (Ann.) [%]  │ 8.21145                 │
+│ Sharpe Ratio           │ 0.433876                │
+│ Sortino Ratio          │ 0.675642                │
+│ Calmar Ratio           │ 0.179834                │
 │ Max. Drawdown [%]      │ -19.811321              │
 │ Avg. Drawdown [%]      │ -2.241326               │
 │ Max. Drawdown Duration │ 708                     │
 │ Avg. Drawdown Duration │ 54                      │
-│ # Trades               │ 6                       │
-│ Win Rate [%]           │ 16.666667               │
+│ # Trades               │ 5                       │
+│ Win Rate [%]           │ 20                      │
 │ Best Trade [%]         │ 102.3729                │
-│ Worst Trade [%]        │ -10.4418                │
-│ Avg. Trade [%]         │ 5.718878                │
+│ Worst Trade [%]        │ -9.6712                 │
+│ Avg. Trade [%]         │ 9.285359                │
 │ Max. Trade Duration    │ 322                     │
-│ Avg. Trade Duration    │ 100                     │
-│ Profit Factor          │ 2.880822                │
-│ Expectancy [%]         │ 11.139483               │
-│ SQN                    │ 0.305807                │
+│ Avg. Trade Duration    │ 114                     │
+│ Profit Factor          │ 4.079544                │
+│ Expectancy [%]         │ 15.45574                │
+│ SQN                    │ 0.461847                │
 │ Avg. Win [%]           │ 102.3729                │
-│ Avg. Loss [%]          │ -7.1072                 │
-│ Win/Loss Ratio         │ 14.404111               │
-│ Kelly Criterion        │ 0.108813                │
+│ Avg. Loss [%]          │ -6.27355                │
+│ Win/Loss Ratio         │ 16.318177               │
+│ Kelly Criterion        │ 0.150975                │
 └────────────────────────┴─────────────────────────┘
 ```
 
@@ -204,8 +204,22 @@ const backtest = new Backtest(data, SmaCross, {
 backtest.run()        // run the backtest
   .then(results => {
     results.print();  // print the results
-    results.plot();   // plot the equity curve
+    results.plot();   // 繪製回測圖表
   });
+```
+
+預設情況下，回測結束時仍未平倉的交易不會被強制關倉並納入
+`Stats.tradeLog` 或交易統計，這與 `backtesting.py` 的
+`finalize_trades: false` 行為一致。最終 equity curve 仍會反映最後一根
+bar 的 mark-to-market 價值。若要保留舊版 node-backtesting 的行為，並將
+期末未平倉交易納入 `# Trades`，請設定：
+
+```js
+const backtest = new Backtest(data, SmaCross, {
+  cash: 1000000,
+  tradeOnClose: true,
+  finalizeTrades: true,
+});
 ```
 
 ### 最佳化參數
@@ -226,7 +240,7 @@ backtest.optimize({
 })
   .then(({ best, bestParams, bestScore, heatmap }) => {
     best.print();                    // 印出最佳組合的統計
-    best.plot();                     // 畫出最佳組合的權益曲線
+    best.plot();                     // 畫出最佳組合的回測圖表
     console.log(bestParams, bestScore);
   });
 ```
@@ -245,25 +259,52 @@ backtest.optimize({
 
 ### 圖表輸出
 
-`Backtest.plot()`（或 `stats.plot()`）會輸出一個自含的 HTML 檔，使用 [Plotly.js](https://plotly.com/javascript/) 渲染最多 5 個同步聯動的 panel：
+`Backtest.plot(options?)`（或 `stats.plot(options?)`）會輸出一個自含的 HTML 檔，
+使用 [Plotly.js](https://plotly.com/javascript/) 渲染接近 `backtesting.py` 的圖表。
+預設 panel 順序為 **Equity [%] → Profit / Loss → OHLC → Volume**。選用的
+return、drawdown 與非 overlay 指標 panel 會共用同一條時間軸；非 overlay 指標預設反向排列，
+並接在 volume 之後，以貼近 `backtesting.py` 的呈現。
 
-1. **Price** — K 線圖 + 指標 overlay + 進出場標記
-2. **Volume** — 每根成交量
-3. **Equity** — 權益曲線
-4. **Drawdown** — 回撤百分比（fill）
-5. **PnL** — 每筆 trade 的 return %（依正負色分）
-
-可透過 `PlottingOptions` 個別關閉 panel：
+`PlottingOptions` 採用嚴格的 camelCase parity 介面：
 
 ```js
-backtest.plot({ plotVolume: false, plotDrawdown: false, openBrowser: false, filename: 'result.html' });
+backtest.plot({
+  filename: 'result.html',
+  openBrowser: false,
+  plotWidth: 1200,
+  plotReturn: true,
+  plotDrawdown: true,
+  plotPL: true,
+  plotVolume: true,
+  plotTrades: true,
+  relativeEquity: true,
+  superimpose: true, // 也可用 false / 'W' / 'M' / 'Q' / 'Y'
+  resample: true,    // 10,000 根 K 棒以下保留 raw bars
+  showLegend: true,
+});
 ```
+
+預設值：`plotEquity: true`、`plotReturn: false`、`plotPL: true`、
+`plotVolume: true`、`plotDrawdown: false`、`plotTrades: true`、
+`smoothEquity: false`、`relativeEquity: true`、`superimpose: true`、
+`resample: true`、`reverseIndicators: true`、`showLegend: true`。
+
+破壞性變更遷移說明：
+
+- `plotPrice` 已移除；OHLC panel 一律繪製。
+- `plotSuperimposedOhlc` 改為 `superimpose`。
+- `superimposedOhlcRule` 改為 `superimpose: 'W' | 'M' | 'Q' | 'Y'`。
+- `plotPL` 控制 profit / loss panel；`plotTrades` 控制 OHLC panel 上的交易線段。
+- 期末未平倉交易預設不再強制關倉；若要納入交易統計與圖表交易數，請在 `BacktestOptions` 設定 `finalizeTrades: true`。
+- 數值型 `commission` 現在與 `backtesting.py` 對齊：進出場成交價不再被手續費改寫，手續費會在進場與出場時以現金費用扣除，相對下單數量會納入單位手續費，已平倉交易的 P/L 與報酬率也會扣除兩次手續費。
 
 `addIndicator(name, values, options)` 接受：
 
 - `overlay: true`（預設）— 畫在價格面板上
-- `overlay: false` — 放在價格與成交量之間的獨立副圖（適合 RSI / MACD 等）
-- `color` — 任何 CSS 顏色字串
+- `overlay: false` — 放在 volume 之後的獨立副圖（適合 RSI / MACD 等）
+- `color` — 任何 CSS 顏色字串，或多線指標使用的顏色陣列
+- `scatter: true` — 以 marker 而非連續線呈現
+- `plot: false` — 隱藏非 overlay 指標；overlay 指標會以 legend-only trace 起始
 
 最佳化結果的參數熱力圖可用 `plotHeatmap(grid)` 寫入另一個檔案：
 

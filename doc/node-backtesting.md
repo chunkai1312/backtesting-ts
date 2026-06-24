@@ -113,9 +113,15 @@ Print the results of the backtest run.
 
 ### `backtest.plot()`
 
+- `options` {PlottingOptions} _optional._ Plotting options forwarded to `Stats.plot()`.
 - Returns: {this}
 
-Plot the equity curve of the backtest run.
+Write a self-contained Plotly HTML chart for the backtest run. The default layout
+matches the `backtesting.py`-like panel order: equity, profit/loss, OHLC, and
+volume. Supported plotting options include `filename`, `openBrowser`,
+`plotWidth`, `plotEquity`, `plotReturn`, `plotPL`, `plotVolume`, `plotDrawdown`,
+`plotTrades`, `smoothEquity`, `relativeEquity`, `superimpose`, `resample`,
+`reverseIndicators`, and `showLegend`.
 
 ## Class: Strategy
 
@@ -169,8 +175,10 @@ Place a new short order.
 - `name` {string} The indicator name.
 - `values` {number[] | Record<string, number>[]} The values of the indicator. Shorter-than-data arrays are left-padded with `null`.
 - `options` {Object} _optional._ Plotting hints consumed by `Plotting`.
-  - `overlay` {boolean} — `true` (default) draws the indicator on the price panel; `false` puts it in its own subplot.
-  - `color` {string} — Plotly line color (any CSS color string).
+  - `overlay` {boolean} — `true` (default) draws the indicator on the OHLC panel; `false` puts it in its own subplot after volume.
+  - `color` {string | string[]} — Plotly line / marker color, or one color per line for multi-line indicators.
+  - `scatter` {boolean} — `true` renders markers instead of lines.
+  - `plot` {boolean} — `false` hides non-overlay indicators and renders overlay indicators as legend-only traces.
 
 Add an indicator. Plotting options are stored separately from the values; `getIndicator()` continues to return only the values.
 
@@ -183,7 +191,7 @@ Get indicator values by name.
 ### `strategy.getIndicatorOptions(name)`
 
 - `name` {string} The indicator name.
-- Returns: `{ overlay: boolean; color: string } | undefined`
+- Returns: `{ overlay: boolean; color: string | string[]; scatter: boolean; plot: boolean } | undefined`
 
 Get the indicator's plotting options as supplied to `addIndicator()`. Returns `undefined` for unknown names.
 
