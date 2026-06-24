@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.0](https://github.com/chunkai1312/node-backtesting/compare/v1.0.1...v2.0.0) (2026-06-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* final open trades are no longer force-closed by default. Numeric commission is now charged as entry and exit cash fees instead of being folded into execution prices.
+* remove legacy plotting options plotPrice, plotSuperimposedOhlc, and superimposedOhlcRule in favor of the new plotting option surface.
+
+### Features
+
+* default strategy order size ([18c68ea](https://github.com/chunkai1312/node-backtesting/commit/18c68ea3f937536e4f5f04bb066409dcbb681db8))
+* enhance multi-panel plotting ([6d43bea](https://github.com/chunkai1312/node-backtesting/commit/6d43bea9e2ee2901afa05f8e309c63bff886e54a))
+* simplify strategy and order APIs ([2f1d9d4](https://github.com/chunkai1312/node-backtesting/commit/2f1d9d431039c604235fa9fbf89e868ee91922d1))
+* update final trade and commission handling ([73a8269](https://github.com/chunkai1312/node-backtesting/commit/73a82690a21995bf47124decadaf58fb3ba881a1))
+
+
+### Bug Fixes
+
+* update benchmark metric calculations ([6c550bb](https://github.com/chunkai1312/node-backtesting/commit/6c550bbd597399e44d1122a7c39af56c8c917549))
+
 ### [1.0.1](https://github.com/chunkai1312/node-backtesting/compare/v1.0.0...v1.0.1) (2026-06-22)
 
 
