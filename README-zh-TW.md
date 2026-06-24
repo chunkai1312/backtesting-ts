@@ -222,6 +222,10 @@ const backtest = new Backtest(data, SmaCross, {
 });
 ```
 
+`Buy & Hold Return [%]` 會從策略可開始交易的第一根 bar 起算。若策略有註冊
+indicator，indicator 仍在 warm-up、尚未產生有限數值的 bar 會排除在 benchmark
+之外；沒有 indicator 的策略則從資料第一根 bar 起算。
+
 ### 最佳化參數
 
 在上述策略中，我們提供的兩個可變參數 `params.n1` 與 `params.n2`，代表兩條移動平均線的期間。我們可以透過調用 `Backtest.optimize()` 方法來最佳化參數，並找出多個參數的最佳組合。在該方法下設置 `params` 選項可以改變 `Strategy` 提供參數的設定，`Backtest.optimize()` 將會回傳提供參數下的最佳組合。
@@ -298,7 +302,7 @@ equity curve smoothing。
 - `plotPL` 控制 profit / loss panel；`plotTrades` 控制 OHLC panel 上的交易線段。
 - 期末未平倉交易預設維持 open 狀態；若要納入交易統計與圖表交易數，請在 `BacktestOptions` 設定 `finalizeTrades: true`。
 - 數值型 `commission` 會保留進出場成交價，並在進場與出場時以現金費用扣除；相對下單數量會納入單位手續費，已平倉交易的 P/L 與報酬率也會扣除兩次手續費。
-- `Strategy.buy()` / `Strategy.sell()` 接受 `size`、`limitPrice`、`stopPrice`、`slPrice`、`tpPrice`、`tag`。成交價由市價、限價、停損與 `tradeOnClose` 規則決定。
+- `Strategy.buy()` / `Strategy.sell()` 接受 `size`、`limitPrice`、`stopPrice`、`slPrice`、`tpPrice`、`tag`。省略 `size` 時會使用 `1 - Number.EPSILON` 作為接近滿倉的相對下單；`size: 1` 仍代表 1 個絕對單位。成交價由市價、限價、停損與 `tradeOnClose` 規則決定。
 - 若策略需要動態管理停損或停利，可在 `Strategy.next()` 中更新可寫入的 `trade.sl` / `trade.tp`。
 
 `addIndicator(name, values, options)` 接受：

@@ -84,7 +84,10 @@ Create a new `Backtest` instance.
   - `params` {Record<string, number>} The parameters for the trading strategy.
 - Returns: {Promise} Fulfills with `Stats` results upon success.
 
-Run the backtest for the strategy.
+Run the backtest for the strategy. `Stats.results['Buy & Hold Return [%]']` is
+benchmarked from the first strategy-ready bar; registered indicator warm-up bars
+before finite indicator values are excluded. Strategies without indicators use
+the first data bar.
 
 ### `backtest.optimize(options)`
 
@@ -151,8 +154,8 @@ Initialize the strategy to declare indicators and signals.
 
 ### `strategy.buy(options)`
 
-- `options` {Object}
-  - `size` {number} The size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units.
+- `options` {Object} _optional._
+  - `size` {number} _optional._ The size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units. **Default:** `1 - Number.EPSILON`.
   - `limitPrice` {number} _optional._ The limit price of the order.
   - `stopPrice` {number} _optional._ The stop trigger price of the order.
   - `slPrice` {number} _optional._ Stop-loss price for the trade opened by this order.
@@ -164,8 +167,8 @@ order type, and `tradeOnClose`.
 
 ### `strategy.sell(options)`
 
-- `options` {Object}
-  - `size` {number} The positive size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units.
+- `options` {Object} _optional._
+  - `size` {number} _optional._ The positive size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units. **Default:** `1 - Number.EPSILON`.
   - `limitPrice` {number} _optional._ The limit price of the order.
   - `stopPrice` {number} _optional._ The stop trigger price of the order.
   - `slPrice` {number} _optional._ Stop-loss price for the trade opened by this order.

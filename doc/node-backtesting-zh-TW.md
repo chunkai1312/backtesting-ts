@@ -84,7 +84,9 @@
   - `params` {Record<string, number>} 交易策略的參數。
 - 回傳：{Promise} 成功時將使用 `Stats` 履行。
 
-運行交易策略的回測。
+運行交易策略的回測。`Stats.results['Buy & Hold Return [%]']` 會從策略可開始交易的
+第一根 bar 起算；已註冊 indicator 在 warm-up 期間、尚未產生有限數值的 bar 會被排除。
+沒有 indicator 的策略則從資料第一根 bar 起算。
 
 ### `backtest.optimize(options)`
 
@@ -150,8 +152,8 @@
 
 ### `strategy.buy(options)`
 
-- `options` {Object}
-  - `size` {number} 訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。
+- `options` {Object} _選填。_
+  - `size` {number} _選填。_ 訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。**預設值：**`1 - Number.EPSILON`。
   - `limitPrice` {number} _選填。_ 限價單的訂單限價。
   - `stopPrice` {number} _選填。_ 停損觸發價格。
   - `slPrice` {number} _選填。_ 此訂單開倉後的 stop-loss 價格。
@@ -162,8 +164,8 @@
 
 ### `strategy.sell(options)`
 
-- `options` {Object}
-  - `size` {number} 正數訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。
+- `options` {Object} _選填。_
+  - `size` {number} _選填。_ 正數訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。**預設值：**`1 - Number.EPSILON`。
   - `limitPrice` {number} _選填。_ 限價單的訂單限價。
   - `stopPrice` {number} _選填。_ 停損觸發價格。
   - `slPrice` {number} _選填。_ 此訂單開倉後的 stop-loss 價格。

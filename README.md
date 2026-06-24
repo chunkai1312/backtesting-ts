@@ -221,6 +221,11 @@ const backtest = new Backtest(data, SmaCross, {
 });
 ```
 
+`Buy & Hold Return [%]` is benchmarked from the first strategy-ready bar. When
+indicators are registered, warm-up bars before the indicators have finite values
+are excluded from that benchmark; strategies without indicators use the first
+data bar.
+
 ### Optimizing the parameters
 
 In the above strategy, we provide two variable parameters `params.n1` and `params.n2`, which represent the period of two moving averages. We can optimize the parameters and find the best combination of multiple parameters by calling the `Backtest.optimize()` method. Setting the `params` option in this method can change the parameter settings provided by the `Strategy`, and `Backtest.optimize()` will return the best combination of parameters provided.
@@ -298,7 +303,7 @@ Current behavior notes:
 - `plotPL` controls the profit/loss panel; `plotTrades` controls trade segments on the OHLC panel.
 - Final open trades remain open by default; set `finalizeTrades: true` on `BacktestOptions` to include them in trade statistics and plotted trade counts.
 - Numeric `commission` keeps entry/exit prices unadjusted, charges cash fees on both entry and exit, accounts for per-unit commission in relative order sizing, and reports closed-trade P/L / return net of both fees.
-- `Strategy.buy()` / `Strategy.sell()` accept `size`, `limitPrice`, `stopPrice`, `slPrice`, `tpPrice`, and `tag`. Execution prices are determined by market, limit, stop, and `tradeOnClose` rules.
+- `Strategy.buy()` / `Strategy.sell()` accept `size`, `limitPrice`, `stopPrice`, `slPrice`, `tpPrice`, and `tag`. If `size` is omitted, it defaults to `1 - Number.EPSILON` as a near-full-liquidity relative order; `size: 1` remains one absolute unit. Execution prices are determined by market, limit, stop, and `tradeOnClose` rules.
 - For strategy-level stop management, update writable `trade.sl` / `trade.tp` inside `Strategy.next()`.
 
 Indicators registered with `addIndicator(name, values, options)` honor:
