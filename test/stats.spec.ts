@@ -7,6 +7,11 @@ import { Trade } from '../src/trade';
 import { StatsIndex } from '../src/enums';
 import { SmaCross } from './sma-cross.strategy';
 
+class EmptyStrategy extends Strategy {
+  init(): void { /* no-op */ }
+  next(): void { /* no-op */ }
+}
+
 describe('Stats', () => {
   let data: HistoricalData;
   let broker: Broker;
@@ -46,6 +51,63 @@ describe('Stats', () => {
       expect(stats.equityCurve).toBeDefined();
       expect(stats.tradeLog).toBeDefined();
       expect(stats.results).toBeDefined();
+    });
+
+    it('computes buy-and-hold return from the first indicator-ready bar', () => {
+      const warmupData = new HistoricalData([
+        { date: '2024-01-01', open: 100, high: 100, low: 100, close: 100 },
+        { date: '2024-01-02', open: 110, high: 110, low: 110, close: 110 },
+        { date: '2024-01-03', open: 121, high: 121, low: 121, close: 121 },
+        { date: '2024-01-04', open: 133.1, high: 133.1, low: 133.1, close: 133.1 },
+        { date: '2024-01-05', open: 146.41, high: 146.41, low: 146.41, close: 146.41 },
+      ]);
+      const warmupBroker = new Broker(warmupData, {
+        cash: 10000,
+        commission: 0,
+        margin: 1,
+        tradeOnClose: false,
+        hedging: false,
+        exclusiveOrders: false,
+      });
+      const warmupStrategy = new EmptyStrategy(warmupData, warmupBroker);
+      warmupStrategy.addIndicator('readyAtThirdBar', [121, 133.1, 146.41]);
+
+      const stats = new Stats(
+        warmupData,
+        warmupStrategy,
+        Array(warmupData.length).fill(10000),
+        [],
+        { riskFreeRate: 0 },
+      ).compute();
+
+      expect(stats.results?.[StatsIndex.BuyAndHoldReturn]).toBeCloseTo(21, 6);
+    });
+
+    it('computes buy-and-hold return from the first bar when no indicator warm-up exists', () => {
+      const noWarmupData = new HistoricalData([
+        { date: '2024-01-01', open: 100, high: 100, low: 100, close: 100 },
+        { date: '2024-01-02', open: 110, high: 110, low: 110, close: 110 },
+        { date: '2024-01-03', open: 121, high: 121, low: 121, close: 121 },
+      ]);
+      const noWarmupBroker = new Broker(noWarmupData, {
+        cash: 10000,
+        commission: 0,
+        margin: 1,
+        tradeOnClose: false,
+        hedging: false,
+        exclusiveOrders: false,
+      });
+      const noWarmupStrategy = new EmptyStrategy(noWarmupData, noWarmupBroker);
+
+      const stats = new Stats(
+        noWarmupData,
+        noWarmupStrategy,
+        Array(noWarmupData.length).fill(10000),
+        [],
+        { riskFreeRate: 0 },
+      ).compute();
+
+      expect(stats.results?.[StatsIndex.BuyAndHoldReturn]).toBeCloseTo(21, 6);
     });
   });
 
@@ -114,6 +176,19 @@ describe('Stats', () => {
       expect(results[StatsIndex.AvgLossPct]).toBeCloseTo(-2.5, 6);
       expect(results[StatsIndex.WinLossRatio]).toBeCloseTo(2, 6);
       expect(results[StatsIndex.KellyCriterion]).toBeCloseTo(0.5, 6);
+    });
+
+    it('computes Kelly Criterion from cash P/L when trade sizes differ', () => {
+      const results = computeResults(buildTrades([
+        { size: 10, entry: 100, exit: 110, bar: 0 },
+        { size: 1, entry: 100, exit: 120, bar: 1 },
+        { size: 10, entry: 100, exit: 95, bar: 2 },
+      ]));
+
+      expect(results[StatsIndex.AvgWinPct]).toBeCloseTo(15, 6);
+      expect(results[StatsIndex.AvgLossPct]).toBeCloseTo(-5, 6);
+      expect(results[StatsIndex.WinLossRatio]).toBeCloseTo(3, 6);
+      expect(results[StatsIndex.KellyCriterion]).toBeCloseTo(0.388889, 6);
     });
 
     it('all-wins sets Kelly to win rate, ratio to Infinity, AvgLoss to 0', () => {

@@ -116,7 +116,7 @@ export class Stats {
     const equityFinal = this.equity[this.equity.length - 1];
     const equityPeak = max(this.equity);
     const returnPct = this.computeReturnPct(this.equity);
-    const buyAndHoldReturn = this.computeReturnPct(this.data.close);
+    const buyAndHoldReturn = this.computeReturnPct(this.data.close, this.firstStrategyReadyBar());
 
     results[StatsIndex.ExposureTime] = exposureTime;
     results[StatsIndex.EquityFinal] = equityFinal;
@@ -214,13 +214,15 @@ export class Stats {
         : !losers.length
           ? Infinity
           : Math.abs(avgWinPct) / Math.abs(avgLossPct);
+    const avgWinPnL = winners.length ? mean(winners.map(t => t[TradeLogColumn.PnL])) : 0;
+    const avgLossPnL = losers.length ? mean(losers.map(t => t[TradeLogColumn.PnL])) : 0;
     const kellyCriterion = !nTrades
       ? NaN
       : !winners.length
         ? 0
         : !losers.length
           ? winRate / 100
-          : winRate / 100 - (1 - winRate / 100) / (Math.abs(avgWinPct) / Math.abs(avgLossPct));
+          : winRate / 100 - (1 - winRate / 100) / (avgWinPnL / Math.abs(avgLossPnL));
 
     results[StatsIndex.AvgWinPct] = avgWinPct;
     results[StatsIndex.AvgLossPct] = avgLossPct;
@@ -268,10 +270,33 @@ export class Stats {
     return mean(havePosition) * 100;
   }
 
-  private computeReturnPct(values: number[]): number {
+  private computeReturnPct(values: number[], initialIndex = 0): number {
     const finalValue = values[values.length - 1];
-    const initialValue = values[0];
+    const initialValue = values[initialIndex];
     return ((finalValue - initialValue) / initialValue) * 100;
+  }
+
+  private firstStrategyReadyBar(): number {
+    const indicators = Object.values(this.strategy.indicators);
+    if (!indicators.length) return 0;
+
+    let readyBar = 0;
+    let foundReadyIndicator = false;
+    for (const indicator of indicators) {
+      const index = indicator.findIndex(value => this.isReadyIndicatorValue(value));
+      if (index === -1) continue;
+      foundReadyIndicator = true;
+      readyBar = Math.max(readyBar, index);
+    }
+
+    return foundReadyIndicator ? readyBar : 0;
+  }
+
+  private isReadyIndicatorValue(value: number | Record<string, number> | null): boolean {
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (value == null) return false;
+    const values = Object.values(value);
+    return values.length > 0 && values.every(v => Number.isFinite(v));
   }
 
   private computeDrawdownDurationPeaks(
