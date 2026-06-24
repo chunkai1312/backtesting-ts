@@ -4,7 +4,7 @@ import { HistoricalData } from './historical-data';
 import { Context, OrderOptions } from './interfaces';
 
 export interface IndicatorOptions {
-  /** Render the indicator as a line on the price panel (true) or in its own subplot (false). Default `true`. */
+  /** Render the indicator on the OHLC panel (true) or in its own subplot after volume (false). Default `true`. */
   overlay?: boolean;
   /** Plotly color for the indicator trace, or one color per line for multi-line indicators. */
   color?: string | string[];
@@ -84,8 +84,9 @@ export abstract class Strategy {
 
   /**
    * Add an indicator. The optional `options` controls how the plotter renders it:
-   * `overlay: true` (default) draws the indicator on the price panel; `overlay: false`
-   * gives it its own subplot. `color`, `scatter`, and `plot` are passed to the plotter.
+   * `overlay: true` (default) draws the indicator on the OHLC panel; `overlay: false`
+   * gives it its own subplot after volume. `plot: false` hides non-overlay indicators
+   * and starts overlay indicators as legend-only traces.
    */
   public addIndicator(
     name: string,
@@ -109,13 +110,6 @@ export abstract class Strategy {
    */
   public getIndicator(name: string) {
     return this._indicators[name];
-  }
-
-  /**
-   * Get the indicator's plotting options.
-   */
-  public getIndicatorOptions(name: string): Required<IndicatorOptions> | undefined {
-    return this._indicatorMeta[name];
   }
 
   /**

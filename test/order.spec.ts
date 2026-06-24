@@ -30,34 +30,6 @@ describe('Order', () => {
       const options = { size: 0 };
       expect(() => new Order(broker, options)).toThrow();
     });
-
-    it('should throw TypeError when trailPercent and trailAmount are both supplied', () => {
-      expect(() => new Order(broker, { size: 1, trailPercent: 0.05, trailAmount: 5 })).toThrow(TypeError);
-    });
-
-    it('should throw RangeError for non-positive trailPercent', () => {
-      expect(() => new Order(broker, { size: 1, trailPercent: 0 })).toThrow(RangeError);
-      expect(() => new Order(broker, { size: 1, trailPercent: -0.05 })).toThrow(RangeError);
-    });
-
-    it('should throw RangeError when trailPercent >= 1', () => {
-      expect(() => new Order(broker, { size: 1, trailPercent: 1 })).toThrow(RangeError);
-      expect(() => new Order(broker, { size: 1, trailPercent: 1.5 })).toThrow(RangeError);
-    });
-
-    it('should throw RangeError for non-positive trailAmount', () => {
-      expect(() => new Order(broker, { size: 1, trailAmount: 0 })).toThrow(RangeError);
-      expect(() => new Order(broker, { size: 1, trailAmount: -5 })).toThrow(RangeError);
-    });
-
-    it('should expose trailPercent and trailAmount via getters', () => {
-      const a = new Order(broker, { size: 1, trailPercent: 0.05 });
-      expect(a.trailPercent).toBe(0.05);
-      expect(a.trailAmount).toBeUndefined();
-      const b = new Order(broker, { size: 1, trailAmount: 5 });
-      expect(b.trailPercent).toBeUndefined();
-      expect(b.trailAmount).toBe(5);
-    });
   });
 
   describe('.size', () => {
@@ -97,21 +69,6 @@ describe('Order', () => {
       const options = { size: 1, tpPrice: 100 };
       const order = new Order(broker, options);
       expect(order.tp).toBe(options.tpPrice);
-    });
-  });
-
-  describe('.parentTrade', () => {
-    it('should get the parent trade of the order', () => {
-      const trade = new Trade(broker, { size: 1, entryPrice: 100, entryBar: 1 });
-      const options = { size: 1, parentTrade: trade };
-      const order = new Order(broker, options);
-      expect(order.parentTrade).toBe(options.parentTrade);
-    });
-
-    it('should return undefined if parent trade is not set', () => {
-      const options = { size: 1 };
-      const order = new Order(broker, options);
-      expect(order.parentTrade).toBeUndefined();
     });
   });
 
@@ -158,14 +115,14 @@ describe('Order', () => {
   });
 
   describe('.isContingent', () => {
-    it('should return true when the parant trade is exist', () => {
+    it('should return true when the parent trade exists', () => {
       const trade = new Trade(broker, { size: 1, entryPrice: 100, entryBar: 1 });
-      const options = { size: 1, parentTrade: trade };
-      const order = new Order(broker, options);
+      trade.close();
+      const order = broker.orders[0];
       expect(order.isContingent).toBe(true);
     });
 
-    it('should return true when the parant trade does not exist', () => {
+    it('should return false when the parent trade does not exist', () => {
       const options = { size: 1 };
       const order = new Order(broker, options);
       expect(order.isContingent).toBe(false);
@@ -182,20 +139,22 @@ describe('Order', () => {
 
     it('should remove the stop-loss order of the parent trade', () => {
       const trade = new Trade(broker, { size: 1, entryPrice: 100, entryBar: 1 });
-      expect(trade.slOrder).toBeUndefined();
+      expect(trade.sl).toBeUndefined();
       trade.sl = 100;
-      expect(trade.slOrder).toBeInstanceOf(Order);
-      trade.slOrder?.cancel();
-      expect(trade.slOrder).toBeUndefined();
+      expect(trade.sl).toBe(100);
+      expect(broker.orders[0]).toBeInstanceOf(Order);
+      broker.orders[0].cancel();
+      expect(trade.sl).toBeUndefined();
     });
 
     it('should remove the take-profit order of the parent trade', () => {
       const trade = new Trade(broker, { size: 1, entryPrice: 100, entryBar: 1 });
-      expect(trade.slOrder).toBeUndefined();
+      expect(trade.tp).toBeUndefined();
       trade.tp = 100;
-      expect(trade.tpOrder).toBeInstanceOf(Order);
-      trade.tpOrder?.cancel();
-      expect(trade.tpOrder).toBeUndefined();
+      expect(trade.tp).toBe(100);
+      expect(broker.orders[0]).toBeInstanceOf(Order);
+      broker.orders[0].cancel();
+      expect(trade.tp).toBeUndefined();
     });
   });
 
@@ -243,16 +202,6 @@ describe('Order', () => {
       expect(order.tp).toBe(options.tpPrice);
       order.replace(newOptions);
       expect(order.tp).toBe(newOptions.tpPrice);
-    });
-
-    it('should update the parent trade of the order', () => {
-      const options = { size: 1, parantTrade: undefined };
-      const order = new Order(broker, options);
-      const trade = new Trade(broker, { size: 1, entryPrice: 100, entryBar: 1 });
-      const newOptions = { ...options, parentTrade: trade };
-      expect(order.parentTrade).toBe(options.parantTrade);
-      order.replace(newOptions);
-      expect(order.parentTrade).toBe(newOptions.parentTrade);
     });
 
     it('should update the tag of the order', () => {

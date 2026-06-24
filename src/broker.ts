@@ -6,6 +6,8 @@ import { Trade } from './trade';
 import { Position } from './position';
 import { BrokerOptions, OrderOptions } from './interfaces';
 
+type InternalOrderOptions = OrderOptions & { parentTrade?: Trade };
+
 export class Broker {
   private _i: number;
   private _cash: number;
@@ -60,18 +62,18 @@ export class Broker {
     return Math.max(0, this.equity - marginUsed);
   }
 
-  public newOrder(options: OrderOptions) {
-    const { price, size, stopPrice, limitPrice, slPrice, tpPrice, parentTrade } = options;
+  public newOrder(options: InternalOrderOptions) {
+    const { size, stopPrice, limitPrice, slPrice, tpPrice, parentTrade } = options;
     const isLong = size > 0;
-    const adjustedPrice = this.adjustPrice({ price });
+    const referencePrice = limitPrice || stopPrice || this.lastPrice;
 
     if (isLong) {
-      if (!((limitPrice || stopPrice || adjustedPrice) > (slPrice || Number.NEGATIVE_INFINITY) && (limitPrice || stopPrice || adjustedPrice) < (tpPrice || Number.POSITIVE_INFINITY))) {
-        throw new RangeError(`Long orders require: SL (${slPrice}) < LIMIT (${limitPrice || stopPrice || adjustedPrice}) < TP (${tpPrice})`);
+      if (!(referencePrice > (slPrice || Number.NEGATIVE_INFINITY) && referencePrice < (tpPrice || Number.POSITIVE_INFINITY))) {
+        throw new RangeError(`Long orders require: SL (${slPrice}) < LIMIT (${referencePrice}) < TP (${tpPrice})`);
       }
     } else {
-      if (!((limitPrice || stopPrice || adjustedPrice) > (tpPrice || Number.NEGATIVE_INFINITY) && (limitPrice || stopPrice || adjustedPrice) < (slPrice || Number.POSITIVE_INFINITY))) {
-        throw new RangeError(`Short orders require: TP (${tpPrice}) < LIMIT (${limitPrice || stopPrice || adjustedPrice}) < SL (${slPrice})`);
+      if (!(referencePrice > (tpPrice || Number.NEGATIVE_INFINITY) && referencePrice < (slPrice || Number.POSITIVE_INFINITY))) {
+        throw new RangeError(`Short orders require: TP (${tpPrice}) < LIMIT (${referencePrice}) < SL (${slPrice})`);
       }
     }
 
@@ -116,34 +118,7 @@ export class Broker {
     this.next();
   }
 
-  private updateTrailingStops() {
-    const i = this._i;
-    /* istanbul ignore if */
-    if (i >= this.data.length) return;
-    const high = this.data.high[i];
-    const low = this.data.low[i];
-
-    for (const trade of this.trades) {
-      if (!trade.isTrailing) continue;
-      trade.updateTrailingPeak(high, low);
-      const newSL = trade.computeTrailingSL();
-      /* istanbul ignore if */
-      if (newSL === undefined) continue;
-
-      const currentSL = trade.slOrder?.stop;
-      if (currentSL === undefined) {
-        trade.applyTrailingSL(newSL);
-      } else if (trade.isLong && newSL > currentSL) {
-        trade.applyTrailingSL(newSL);
-      } else if (trade.isShort && newSL < currentSL) {
-        trade.applyTrailingSL(newSL);
-      }
-    }
-  }
-
   private processOrders() {
-    this.updateTrailingStops();
-
     const i = this._i;
     const open = this.data.open[i];
     const high = this.data.high[i];
@@ -185,8 +160,9 @@ export class Broker {
       const isMarketOrder = !order.limit && !stopPrice;
       const timeIndex = isMarketOrder && this._tradeOnClose ? (this._i - 1) : this._i;
 
-      if (order.parentTrade) {
-        const trade = order.parentTrade;
+      const parentTrade = this.parentTrade(order);
+      if (parentTrade) {
+        const trade = parentTrade;
         const prevSize = trade.size;
         const size = Math.min(Math.abs(prevSize), Math.abs(order.size)) * Math.sign(order.size);
 
@@ -195,7 +171,7 @@ export class Broker {
           assert(order.size !== -prevSize || !this.trades.includes(trade));
         }
         /* istanbul ignore if */
-        if ([trade.slOrder, trade.tpOrder].includes(order)) {
+        if ([this.slOrder(trade), this.tpOrder(trade)].includes(order)) {
           assert(order.size === -trade.size);
           assert(!this.orders.includes(order));
         } else {
@@ -205,7 +181,7 @@ export class Broker {
         continue;
       }
 
-      const adjustedPrice = this.adjustPrice({ price });
+      const adjustedPrice = price;
       const priceWithCommission = adjustedPrice + (this.commission({ size: order.size, price: adjustedPrice }) / Math.abs(order.size));
 
       let size = order.size;
@@ -252,11 +228,9 @@ export class Broker {
           tp: order.tp,
           timeIndex,
           tag: order.tag,
-          trailPercent: order.trailPercent,
-          trailAmount: order.trailAmount,
         });
         /* istanbul ignore if */
-        if ((order.sl || order.tp || order.trailPercent !== undefined || order.trailAmount !== undefined) && isMarketOrder) reprocessOrders = true;
+        if ((order.sl || order.tp) && isMarketOrder) reprocessOrders = true;
       }
 
       remove(this.orders, o => o === order);
@@ -264,11 +238,6 @@ export class Broker {
 
     /* istanbul ignore if */
     if (reprocessOrders) this.processOrders();
-  }
-
-  private adjustPrice(options: { price?: number }) {
-    const { price } = options;
-    return price || this.lastPrice;
   }
 
   private commission(options: { size: number, price: number }) {
@@ -283,10 +252,8 @@ export class Broker {
     tp?: number,
     timeIndex: number,
     tag?: Record<string, string>,
-    trailPercent?: number,
-    trailAmount?: number,
   }) {
-    const { price, size, sl, tp, timeIndex, tag, trailPercent, trailAmount } = options;
+    const { price, size, sl, tp, timeIndex, tag } = options;
     this._cash -= this.commission({ size, price });
 
     const trade = new Trade(this, {
@@ -294,23 +261,13 @@ export class Broker {
       entryPrice: price,
       entryBar: timeIndex,
       tag,
-      trailPercent,
-      trailAmount,
     });
     this.trades.push(trade);
 
     /* istanbul ignore if */
     if (tp) trade.tp = tp;
 
-    if (trade.isTrailing) {
-      // Constructor guarantees peakHigh/peakLow are set when trailing,
-      // so computeTrailingSL() is defined here.
-      const initialTrailingSL = trade.computeTrailingSL() as number;
-      const startSL = sl !== undefined
-        ? (trade.isLong ? Math.max(sl, initialTrailingSL) : Math.min(sl, initialTrailingSL))
-        : initialTrailingSL;
-      trade.applyTrailingSL(startSL);
-    } else if (sl) {
+    if (sl !== undefined) {
       /* istanbul ignore next */
       trade.sl = sl;
     }
@@ -322,8 +279,10 @@ export class Broker {
     const exitCommission = this.commission({ size: trade.size, price });
 
     remove(this.trades, t => t === trade);
-    if (trade.slOrder) remove(this.orders, o => o === trade.slOrder);
-    if (trade.tpOrder) remove(this.orders, o => o === trade.tpOrder);
+    const slOrder = this.slOrder(trade);
+    const tpOrder = this.tpOrder(trade);
+    if (slOrder) remove(this.orders, o => o === slOrder);
+    if (tpOrder) remove(this.orders, o => o === tpOrder);
 
     this.closedTrades.push(trade.replace({
       exitPrice: price,
@@ -349,13 +308,27 @@ export class Broker {
       closeTrade = trade;
     } else {
       trade.replace({ size: sizeLeft });
-      if (trade.slOrder) trade.slOrder.replace({ size: -trade.size });
-      if (trade.tpOrder) trade.tpOrder.replace({ size: -trade.size });
+      const slOrder = this.slOrder(trade);
+      const tpOrder = this.tpOrder(trade);
+      if (slOrder) slOrder.replace({ size: -trade.size });
+      if (tpOrder) tpOrder.replace({ size: -trade.size });
 
       closeTrade = trade.copy({ size: -size, slOrder: undefined, tpOrder: undefined });
       this.trades.push(closeTrade);
     }
 
     this.closeTrade({ trade: closeTrade, price, timeIndex });
+  }
+
+  private parentTrade(order: Order): Trade | undefined {
+    return (order as unknown as { _parentTrade?: Trade })._parentTrade;
+  }
+
+  private slOrder(trade: Trade): Order | undefined {
+    return (trade as unknown as { _slOrder?: Order })._slOrder;
+  }
+
+  private tpOrder(trade: Trade): Order | undefined {
+    return (trade as unknown as { _tpOrder?: Order })._tpOrder;
   }
 }

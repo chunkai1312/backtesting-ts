@@ -93,40 +93,6 @@ describe('Trade', () => {
     });
   });
 
-  describe('.slOrder', () => {
-    it('should get the stop-loss order of the trade if set', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0 };
-      const trade = new Trade(broker, options);
-      trade.sl = 90;
-      expect(trade.slOrder).toBeInstanceOf(Order);
-      expect(trade.slOrder?.size).toBe(-10);
-      expect(trade.slOrder?.stop).toBe(90);
-    });
-
-    it('should return undefined if stop-loss order is not set', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0 };
-      const trade = new Trade(broker, options);
-      expect(trade.slOrder).toBeUndefined();
-    });
-  });
-
-  describe('.tpOrder', () => {
-    it('should get the take-profit order of the trade if set', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0 };
-      const trade = new Trade(broker, options);
-      trade.tp = 110;
-      expect(trade.tpOrder).toBeInstanceOf(Order);
-      expect(trade.tpOrder?.size).toBe(-10);
-      expect(trade.tpOrder?.limit).toBe(110);
-    });
-
-    it('should return undefined if take-profit order is not set', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0 };
-      const trade = new Trade(broker, options);
-      expect(trade.tpOrder).toBeUndefined();
-    });
-  });
-
   describe('.entryTime', () => {
     it('should get the entry time of the trade', () => {
       const options = { size: 10, entryPrice: 100, entryBar: 0 };
@@ -242,14 +208,13 @@ describe('Trade', () => {
 
   describe('.sl', () => {
     it('should get the stop-loss price of the trade if set', () => {
-      const order = new Order(broker, { size: -10, stopPrice: 95 });
-      const options = { size: 10, entryPrice: 100, entryBar: 0, slOrder: order };
-      const trade = new Trade(broker, options);
-      expect(trade.sl).toBe(order.stop);
-
+      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
       const stopPrice = 90;
       trade.sl = stopPrice;
       expect(trade.sl).toBe(stopPrice);
+      expect(broker.orders[0]).toBeInstanceOf(Order);
+      expect(broker.orders[0].size).toBe(-10);
+      expect(broker.orders[0].stop).toBe(stopPrice);
     });
 
     it('should return undefined if stop-loss price is not set', () => {
@@ -257,24 +222,41 @@ describe('Trade', () => {
       const trade = new Trade(broker, options);
       expect(trade.sl).toBeUndefined();
     });
+
+    it('should cancel the stop-loss order when set to undefined', () => {
+      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
+      trade.sl = 90;
+      expect(trade.sl).toBe(90);
+      trade.sl = undefined;
+      expect(trade.sl).toBeUndefined();
+      expect(broker.orders.length).toBe(0);
+    });
   });
 
   describe('.tp', () => {
     it('should get the take-profit price of the trade if set', () => {
-      const order = new Order(broker, { size: -10, limitPrice: 105 });
-      const options = { size: 10, entryPrice: 100, entryBar: 0, tpOrder: order };
-      const trade = new Trade(broker, options);
-      expect(trade.tp).toBe(order.limit);
-
+      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
       const limitPrice = 110;
       trade.tp = limitPrice;
       expect(trade.tp).toBe(limitPrice);
+      expect(broker.orders[0]).toBeInstanceOf(Order);
+      expect(broker.orders[0].size).toBe(-10);
+      expect(broker.orders[0].limit).toBe(limitPrice);
     });
 
     it('should return undefined if take-profit price is not set', () => {
       const options = { size: 10, entryPrice: 100, entryBar: 0 };
       const trade = new Trade(broker, options);
       expect(trade.tp).toBeUndefined();
+    });
+
+    it('should cancel the take-profit order when set to undefined', () => {
+      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
+      trade.tp = 110;
+      expect(trade.tp).toBe(110);
+      trade.tp = undefined;
+      expect(trade.tp).toBeUndefined();
+      expect(broker.orders.length).toBe(0);
     });
   });
 
@@ -285,7 +267,7 @@ describe('Trade', () => {
       trade.close();
       expect(broker.orders[0]).toBeInstanceOf(Order);
       expect(broker.orders[0].size).toBe(-options.size);
-      expect(broker.orders[0].parentTrade).toBe(trade);
+      expect(broker.orders[0].isContingent).toBe(true);
     });
 
     it('should place order to close portion of the trade', () => {
@@ -295,7 +277,7 @@ describe('Trade', () => {
       trade.close(portion);
       expect(broker.orders[0]).toBeInstanceOf(Order);
       expect(broker.orders[0].size).toBe(-options.size * portion);
-      expect(broker.orders[0].parentTrade).toBe(trade);
+      expect(broker.orders[0].isContingent).toBe(true);
     });
   });
 
@@ -345,26 +327,6 @@ describe('Trade', () => {
       expect(trade.exitBar).toBe(newOptions.exitBar);
     });
 
-    it('should update the stop-loss order of the trade', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, slOrder: undefined };
-      const trade = new Trade(broker, options);
-      const order = new Order(broker, { size: -10, stopPrice: 90 });
-      const newOptions = { slOrder: order };
-      expect(trade.slOrder).toBe(options.slOrder);
-      trade.replace(newOptions);
-      expect(trade.slOrder).toBe(newOptions.slOrder);
-    });
-
-    it('should update the take-profit order of the trade', () => {
-      const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, tpOrder: undefined };
-      const trade = new Trade(broker, options);
-      const order = new Order(broker, { size: -10, limitPrice: 110 });
-      const newOptions = { tpOrder: order };
-      expect(trade.tpOrder).toBe(options.tpOrder);
-      trade.replace(newOptions);
-      expect(trade.tpOrder).toBe(newOptions.tpOrder);
-    });
-
     it('should update the tag bar of the trade', () => {
       const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, tag: undefined };
       const trade = new Trade(broker, options);
@@ -378,122 +340,9 @@ describe('Trade', () => {
       const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, commission: 0 };
       const trade = new Trade(broker, options);
       const newOptions = { commission: 4 };
-      expect(trade.commission).toBe(options.commission);
+      expect(trade.pl).toBe(100);
       trade.replace(newOptions);
-      expect(trade.commission).toBe(newOptions.commission);
-    });
-  });
-
-  describe('trailing stop', () => {
-    it('isTrailing is false for fixed-SL trade', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
-      expect(trade.isTrailing).toBe(false);
-    });
-
-    it('isTrailing is true when constructed with trailPercent', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      expect(trade.isTrailing).toBe(true);
-      expect(trade.trailPercent).toBe(0.05);
-      expect(trade.trailAmount).toBeUndefined();
-    });
-
-    it('isTrailing is true when constructed with trailAmount', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailAmount: 5 });
-      expect(trade.isTrailing).toBe(true);
-      expect(trade.trailAmount).toBe(5);
-    });
-
-    it('updateTrailingPeak ratchets long peakHigh upward only', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      trade.updateTrailingPeak(105, 99);
-      expect(trade.computeTrailingSL()).toBeCloseTo(105 * 0.95, 6);
-      // lower high should NOT lower peak
-      trade.updateTrailingPeak(103, 100);
-      expect(trade.computeTrailingSL()).toBeCloseTo(105 * 0.95, 6);
-    });
-
-    it('updateTrailingPeak ratchets short peakLow downward only', () => {
-      const trade = new Trade(broker, { size: -10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      trade.updateTrailingPeak(101, 95);
-      expect(trade.computeTrailingSL()).toBeCloseTo(95 * 1.05, 6);
-      // higher low should NOT raise peak
-      trade.updateTrailingPeak(102, 97);
-      expect(trade.computeTrailingSL()).toBeCloseTo(95 * 1.05, 6);
-    });
-
-    it('computeTrailingSL uses trailAmount for long', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailAmount: 5 });
-      trade.updateTrailingPeak(110, 100);
-      expect(trade.computeTrailingSL()).toBe(105);
-    });
-
-    it('computeTrailingSL uses trailAmount for short', () => {
-      const trade = new Trade(broker, { size: -10, entryPrice: 100, entryBar: 0, trailAmount: 5 });
-      trade.updateTrailingPeak(100, 90);
-      expect(trade.computeTrailingSL()).toBe(95);
-    });
-
-    it('updateTrailingPeak / computeTrailingSL are no-ops when not trailing', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
-      trade.updateTrailingPeak(105, 99);
-      expect(trade.computeTrailingSL()).toBeUndefined();
-    });
-
-    it('replace({ trailPercent }) tightens trailing parameters mid-trade', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.10 });
-      trade.updateTrailingPeak(120, 100);
-      expect(trade.computeTrailingSL()).toBeCloseTo(120 * 0.90, 6);
-      trade.replace({ trailPercent: 0.05 });
-      expect(trade.computeTrailingSL()).toBeCloseTo(120 * 0.95, 6);
-      expect(trade.trailAmount).toBeUndefined();
-    });
-
-    it('replace({ trailAmount }) on non-trailing trade enables trailing from current entry price', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
-      expect(trade.isTrailing).toBe(false);
-      trade.replace({ trailAmount: 4 });
-      expect(trade.isTrailing).toBe(true);
-      expect(trade.computeTrailingSL()).toBe(96);
-    });
-
-    it('replace({ trailPercent }) on non-trailing trade enables trailing from current entry price', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
-      expect(trade.isTrailing).toBe(false);
-      trade.replace({ trailPercent: 0.05 });
-      expect(trade.isTrailing).toBe(true);
-      expect(trade.computeTrailingSL()).toBeCloseTo(95, 6);
-    });
-
-    it('trailingDistance reports correctly on a short trade', () => {
-      const trade = new Trade(broker, { size: -10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      trade.updateTrailingPeak(100, 90);
-      // peakLow = 90, trailing SL = 90 * 1.05 = 94.5; distance = |90 - 94.5| = 4.5
-      trade.applyTrailingSL(90 * 1.05);
-      expect(trade.trailingDistance).toBeCloseTo(4.5, 6);
-    });
-
-    it('assigning fixed sl disables trailing', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      trade.updateTrailingPeak(110, 100);
-      trade.sl = 95;
-      expect(trade.isTrailing).toBe(false);
-      expect(trade.trailPercent).toBeUndefined();
-      expect(trade.computeTrailingSL()).toBeUndefined();
-    });
-
-    it('trailingDistance reports peak-to-SL absolute distance after applyTrailingSL', () => {
-      const trade = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      trade.updateTrailingPeak(110, 100);
-      // simulate broker setting up the SL at the trailing level
-      trade.applyTrailingSL(110 * 0.95);
-      expect(trade.trailingDistance).toBeCloseTo(5.5, 6);
-    });
-
-    it('trailingDistance is undefined when not trailing or no SL set', () => {
-      const fixed = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0 });
-      expect(fixed.trailingDistance).toBeUndefined();
-      const trailingNoSL = new Trade(broker, { size: 10, entryPrice: 100, entryBar: 0, trailPercent: 0.05 });
-      expect(trailingNoSL.trailingDistance).toBeUndefined();
+      expect(trade.pl).toBe(96);
     });
   });
 

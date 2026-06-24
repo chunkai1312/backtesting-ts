@@ -3,6 +3,12 @@ import { Broker } from './broker';
 import { Order } from './order';
 import { TradeOptions } from './interfaces';
 
+type InternalTradeOptions = TradeOptions & {
+  commission?: number;
+  slOrder?: Order;
+  tpOrder?: Order;
+};
+
 export class Trade {
   private _size: number;
   private _entryPrice: number;
@@ -13,12 +19,8 @@ export class Trade {
   private _slOrder?: Order;
   private _tpOrder?: Order;
   private _tag?: Record<string, string>;
-  private _trailPercent?: number;
-  private _trailAmount?: number;
-  private _peakHigh?: number;
-  private _peakLow?: number;
 
-  constructor(private readonly broker: Broker, options: TradeOptions) {
+  constructor(private readonly broker: Broker, options: InternalTradeOptions) {
     this._size = options.size;
     this._entryPrice = options.entryPrice;
     this._exitPrice = options.exitPrice;
@@ -28,12 +30,6 @@ export class Trade {
     this._slOrder = options.slOrder;
     this._tpOrder = options.tpOrder;
     this._tag = options.tag;
-    this._trailPercent = options.trailPercent;
-    this._trailAmount = options.trailAmount;
-    if (this._trailPercent !== undefined || this._trailAmount !== undefined) {
-      this._peakHigh = options.entryPrice;
-      this._peakLow = options.entryPrice;
-    }
   }
 
   /**
@@ -73,32 +69,11 @@ export class Trade {
   }
 
   /**
-   * Total entry and exit commissions attributed to this trade.
-   */
-  get commission() {
-    return this._commission;
-  }
-
-  /**
    * A tag value inherited from the `Order` that opened this trade.
    * This can be used to track trades and apply conditional logic / subgroup analysis.
    */
   get tag() {
     return this._tag;
-  }
-
-  /**
-   * Get stop-loss order.
-   */
-  get slOrder() {
-    return this._slOrder;
-  }
-
-  /**
-   * Get take-profit order.
-   */
-  get tpOrder() {
-    return this._tpOrder;
   }
 
   /**
@@ -162,112 +137,14 @@ export class Trade {
    * By assigning it `undefined`, you cancel it.
    */
   get sl() {
-    return this._slOrder?.stop as number;
+    return this._slOrder?.stop;
   }
 
   /**
-   * Set stop-loss price. Assigning a fixed price disables trailing mode.
+   * Set stop-loss price.
    */
-  set sl(price: number) {
-    this._trailPercent = undefined;
-    this._trailAmount = undefined;
-    this._peakHigh = undefined;
-    this._peakLow = undefined;
+  set sl(price: number | undefined) {
     this.setContingent('sl', price);
-  }
-
-  /**
-   * `true` if this trade was opened with `trailPercent` or `trailAmount` and
-   * trailing has not been disabled (e.g. via fixed `sl` assignment).
-   */
-  get isTrailing(): boolean {
-    return this._trailPercent !== undefined || this._trailAmount !== undefined;
-  }
-
-  /**
-   * Trailing stop distance as a fraction of price, or `undefined` if not in trailing mode.
-   */
-  get trailPercent(): number | undefined {
-    return this._trailPercent;
-  }
-
-  /**
-   * Trailing stop distance as an absolute price-unit difference, or `undefined` if not in trailing mode.
-   */
-  get trailAmount(): number | undefined {
-    return this._trailAmount;
-  }
-
-  /**
-   * Absolute distance between the current trailing peak and the active SL price.
-   * Returns `undefined` when not trailing or no SL has been established yet.
-   */
-  get trailingDistance(): number | undefined {
-    if (!this.isTrailing) return undefined;
-    const peak = this.isLong ? this._peakHigh : this._peakLow;
-    const slPrice = this._slOrder?.stop;
-    if (peak === undefined || slPrice === undefined) return undefined;
-    return Math.abs(peak - slPrice);
-  }
-
-  /**
-   * Update internal peak-high (long) or peak-low (short) using the current bar's
-   * extremes. No-op when the trade is not in trailing mode.
-   */
-  public updateTrailingPeak(barHigh: number, barLow: number): void {
-    if (!this.isTrailing) return;
-    if (this.isLong) {
-      if (this._peakHigh === undefined || barHigh > this._peakHigh) {
-        this._peakHigh = barHigh;
-      }
-    } else {
-      if (this._peakLow === undefined || barLow < this._peakLow) {
-        this._peakLow = barLow;
-      }
-    }
-  }
-
-  /**
-   * Create or update the SL order to the given price without disturbing trailing state.
-   * Used by the broker's trailing-stop loop; for fixed-SL assignment (which DOES
-   * disable trailing) use the `sl` setter instead.
-   */
-  public applyTrailingSL(price: number): void {
-    if (this._slOrder) {
-      this._slOrder.replace({ stopPrice: price });
-      return;
-    }
-    const order = this.broker.newOrder({
-      size: -this._size,
-      parentTrade: this,
-      tag: this._tag,
-      stopPrice: price,
-    });
-    this._slOrder = order;
-  }
-
-  /**
-   * Compute the trailing-derived SL price from the current peak.
-   * Returns `undefined` when not trailing or peak is not yet set.
-   */
-  public computeTrailingSL(): number | undefined {
-    if (!this.isTrailing) return undefined;
-    if (this.isLong) {
-      /* istanbul ignore if */
-      if (this._peakHigh === undefined) return undefined;
-      if (this._trailPercent !== undefined) return this._peakHigh * (1 - this._trailPercent);
-      /* istanbul ignore else */
-      if (this._trailAmount !== undefined) return this._peakHigh - this._trailAmount;
-      /* istanbul ignore next */
-      return undefined;
-    }
-    /* istanbul ignore if */
-    if (this._peakLow === undefined) return undefined;
-    if (this._trailPercent !== undefined) return this._peakLow * (1 + this._trailPercent);
-    /* istanbul ignore else */
-    if (this._trailAmount !== undefined) return this._peakLow + this._trailAmount;
-    /* istanbul ignore next */
-    return undefined;
   }
 
   /**
@@ -278,13 +155,13 @@ export class Trade {
    * By assigning it `undefined`, you cancel it.
    */
   get tp() {
-    return this._tpOrder?.limit as number;
+    return this._tpOrder?.limit;
   }
 
   /**
    * Set take-profit price.
    */
-  set tp(price: number) {
+  set tp(price: number | undefined) {
     this.setContingent('tp', price);
   }
 
@@ -301,7 +178,7 @@ export class Trade {
   /**
    * Replace the trade.
    */
-  public replace(options: Partial<TradeOptions>) {
+  public replace(options: Partial<InternalTradeOptions>) {
     if (options.size !== undefined) this._size = options.size;
     if (options.entryPrice !== undefined) this._entryPrice = options.entryPrice;
     if (options.exitPrice !== undefined) this._exitPrice = options.exitPrice;
@@ -311,31 +188,19 @@ export class Trade {
     if (options.slOrder !== undefined) this._slOrder = options.slOrder;
     if (options.tpOrder !== undefined) this._tpOrder = options.tpOrder;
     if (options.tag !== undefined) this._tag = options.tag;
-    if (options.trailPercent !== undefined) {
-      this._trailPercent = options.trailPercent;
-      this._trailAmount = undefined;
-      if (this._peakHigh === undefined) this._peakHigh = this._entryPrice;
-      if (this._peakLow === undefined) this._peakLow = this._entryPrice;
-    }
-    if (options.trailAmount !== undefined) {
-      this._trailAmount = options.trailAmount;
-      this._trailPercent = undefined;
-      if (this._peakHigh === undefined) this._peakHigh = this._entryPrice;
-      if (this._peakLow === undefined) this._peakLow = this._entryPrice;
-    }
     return this;
   }
 
   /**
    * Copy the trade.
    */
-  public copy(options: Partial<TradeOptions>) {
+  public copy(options: Partial<InternalTradeOptions>) {
     return Object.assign(Object.create(Object.getPrototypeOf(this)), this).replace(options);
   }
 
-  private setContingent(type: string, price: number) {
+  private setContingent(type: string, price?: number) {
     assert(type === 'sl' || type === 'tp');
-    assert(price === 0 || price < Number.POSITIVE_INFINITY);
+    assert(price === undefined || price === 0 || price < Number.POSITIVE_INFINITY);
 
     const order = (type === 'sl') ? this._slOrder : this._tpOrder;
     if (order) order.cancel();

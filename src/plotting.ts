@@ -331,7 +331,7 @@ export class Plotting {
     for (const name of Object.keys(strategy.indicators)) {
       const raw = strategy.indicators[name];
       const sample = (raw as Array<number | null | Record<string, number>>).find(v => v != null);
-      const meta = strategy.getIndicatorOptions(name);
+      const meta = this.indicatorOptions(strategy, name);
       /* istanbul ignore next */
       if (!meta) continue;
       if (!meta.overlay && !meta.plot) continue;
@@ -359,6 +359,13 @@ export class Plotting {
         });
       });
     }
+  }
+
+  private indicatorOptions(strategy: Strategy, name: string): Required<IndicatorOptions> | undefined {
+    const meta = (strategy as unknown as {
+      _indicatorMeta?: Record<string, Required<IndicatorOptions>>;
+    })._indicatorMeta;
+    return meta?.[name];
   }
 
   private preparePlotModel(
