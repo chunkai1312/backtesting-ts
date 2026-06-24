@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [2.0.1](https://github.com/chunkai1312/node-backtesting/compare/v2.0.0...v2.0.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* refine plotting labels and hover text ([a95a149](https://github.com/chunkai1312/node-backtesting/commit/a95a14983c264a728e18cd225bd10a3d77cbb436))
+
 ## [2.0.0](https://github.com/chunkai1312/node-backtesting/compare/v1.0.1...v2.0.0) (2026-06-24)
 
 

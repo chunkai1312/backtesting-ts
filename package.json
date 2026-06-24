@@ -1,6 +1,6 @@
 {
   "name": "node-backtesting",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Backtest trading strategies in Node.js",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
