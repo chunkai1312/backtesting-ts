@@ -3,6 +3,8 @@ import { Broker } from './broker';
 import { HistoricalData } from './historical-data';
 import { Context, OrderOptions } from './interfaces';
 
+const DEFAULT_ORDER_SIZE = 1 - Number.EPSILON;
+
 export interface IndicatorOptions {
   /** Render the indicator on the OHLC panel (true) or in its own subplot after volume (false). Default `true`. */
   overlay?: boolean;
@@ -63,23 +65,29 @@ export abstract class Strategy {
   /**
    * Place a new long order.
    */
-  public buy(options: Omit<OrderOptions, 'trade'>) {
+  public buy(options: OrderOptions = {}) {
+    const normalized = this.normalizeOrderOptions(options);
     assert(
-      (options.size > 0) && (options.size < 1 || Math.round(options.size) === options.size),
+      (normalized.size > 0) && (normalized.size < 1 || Math.round(normalized.size) === normalized.size),
       'size must be a positive fraction of equity, or a positive whole number of units',
     );
-    return this.broker.newOrder(options);
+    return this.broker.newOrder(normalized);
   }
 
   /**
    * Place a new short order.
    */
-  public sell(options: Omit<OrderOptions, 'trade'>) {
+  public sell(options: OrderOptions = {}) {
+    const normalized = this.normalizeOrderOptions(options);
     assert(
-      (options.size > 0) && (options.size < 1 || Math.round(options.size) === options.size),
+      (normalized.size > 0) && (normalized.size < 1 || Math.round(normalized.size) === normalized.size),
       'size must be a positive fraction of equity, or a positive whole number of units',
     );
-    return this.broker.newOrder({ ...options, size: -options.size });
+    return this.broker.newOrder({ ...normalized, size: -normalized.size });
+  }
+
+  private normalizeOrderOptions(options: OrderOptions): OrderOptions & { size: number } {
+    return { ...options, size: options.size ?? DEFAULT_ORDER_SIZE };
   }
 
   /**

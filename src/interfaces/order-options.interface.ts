@@ -1,5 +1,5 @@
 export interface OrderOptions {
-  size: number;
+  size?: number;
   limitPrice?: number;
   stopPrice?: number;
   slPrice?: number;

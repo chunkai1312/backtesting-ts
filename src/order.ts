@@ -4,7 +4,7 @@ import { Broker } from './broker';
 import { Trade } from './trade';
 import { OrderOptions } from './interfaces';
 
-type InternalOrderOptions = OrderOptions & { parentTrade?: Trade };
+type InternalOrderOptions = OrderOptions & { size: number; parentTrade?: Trade };
 
 export class Order {
   private _size: number;

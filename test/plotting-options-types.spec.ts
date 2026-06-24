@@ -60,6 +60,12 @@ describe('plotting option type surface', () => {
 });
 
 describe('core order API type surface', () => {
+  it('accepts omitted public order size for strategy defaults', () => {
+    const withoutSize: OrderOptions = { tag: { source: 'default-size' } };
+
+    expect(withoutSize).toEqual({ tag: { source: 'default-size' } });
+  });
+
   it('rejects removed order option keys at compile time', () => {
     // @ts-expect-error price is intentionally not a public order execution override.
     const withPrice: OrderOptions = { size: 1, price: 100 };

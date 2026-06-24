@@ -4,6 +4,7 @@ import { Broker } from '../src/broker';
 import { SmaCross } from './sma-cross.strategy';
 
 describe('Strategy', () => {
+  const fullEquitySize = 1 - Number.EPSILON;
   let strategy: Strategy;
   let data: HistoricalData;
   let broker: Broker;
@@ -76,6 +77,17 @@ describe('Strategy', () => {
   });
 
   describe('.buy()', () => {
+    it('should default omitted buy size to full-equity relative sizing', () => {
+      expect(() => strategy.buy()).not.toThrow();
+      expect(strategy.orders[0].size).toBe(fullEquitySize);
+    });
+
+    it('should default buy size to full-equity relative sizing when options omit size', () => {
+      expect(() => strategy.buy({ tag: { source: 'default-size' } })).not.toThrow();
+      expect(strategy.orders[0].size).toBe(fullEquitySize);
+      expect(strategy.orders[0].tag).toEqual({ source: 'default-size' });
+    });
+
     it('should allow buying with size as positive integer', () => {
       expect(() => strategy.buy({ size: 10 })).not.toThrow();
       expect(strategy.orders[0].size).toBe(10);
@@ -96,6 +108,17 @@ describe('Strategy', () => {
   });
 
   describe('.sell()', () => {
+    it('should default omitted sell size to full-equity relative sizing', () => {
+      expect(() => strategy.sell()).not.toThrow();
+      expect(strategy.orders[0].size).toBe(-fullEquitySize);
+    });
+
+    it('should default sell size to full-equity relative sizing when options omit size', () => {
+      expect(() => strategy.sell({ tag: { source: 'default-size' } })).not.toThrow();
+      expect(strategy.orders[0].size).toBe(-fullEquitySize);
+      expect(strategy.orders[0].tag).toEqual({ source: 'default-size' });
+    });
+
     it('should allow selling with size as positive integer', () => {
       expect(() => strategy.sell({ size: 10 })).not.toThrow();
       expect(strategy.orders[0].size).toBe(-10);
