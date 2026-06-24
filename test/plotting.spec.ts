@@ -317,8 +317,9 @@ describe('Plotting', () => {
       const plotting = new Plotting(stats, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
-      // Panel title carries the [%] suffix in default (relative) mode
-      expect(html).toContain('"text":"Equity [%]"');
+      // Panel title stays compact while the tick labels carry the % suffix.
+      expect(html).toContain('"text":"Equity"');
+      expect(html).not.toContain('"text":"Equity [%]"');
       // Equity panel Y axis has ticksuffix '%'
       const yaxisIdx = html.indexOf('"yaxis":{');
       const yAxisSlice = html.slice(yaxisIdx, yaxisIdx + 400);
@@ -398,12 +399,23 @@ describe('Plotting', () => {
       expect(html).toContain('"decreasing":{"line":{"color":"#000000","width":1},"fillcolor":"tomato"}');
     });
 
+    it('candlestick hover omits the OHLC trace name before prices', () => {
+      const plotting = new Plotting(stats, { openBrowser: false });
+      plotting.plot();
+      const ohlcTrace = lastPlotTraces().find(t => t.name === 'OHLC');
+      expect(ohlcTrace?.hovertemplate).toBe('open: %{open}<br>high: %{high}<br>low: %{low}<br>close: %{close}<extra></extra>');
+      expect(ohlcTrace?.hoverlabel).toEqual({ namelength: 0 });
+    });
+
     it('plotReturn:true adds a return panel', () => {
       const plotting = new Plotting(stats, { openBrowser: false, plotReturn: true });
       plotting.plot();
       const html = lastRawHtml();
+      const layout = lastPlotLayout();
       expect(html).toContain('"name":"Return"');
-      expect(html).toContain('"text":"Return [%]"');
+      expect(layout.yaxis2.title.text).toBe('Return');
+      expect(layout.yaxis2.ticksuffix).toBe('%');
+      expect(html).not.toContain('"text":"Return [%]"');
       const returnTrace = lastPlotTraces().find(t => t.name === 'Return');
       expect(returnTrace).toBeDefined();
       expect((returnTrace?.y as number[])[0]).toBeCloseTo(0, 8);
@@ -413,8 +425,11 @@ describe('Plotting', () => {
       const plotting = new Plotting(stats, { openBrowser: false, plotDrawdown: true });
       plotting.plot();
       const html = lastRawHtml();
+      const layout = lastPlotLayout();
       expect(html).toContain('"name":"Drawdown"');
-      expect(html).toContain('"text":"Drawdown [%]"');
+      expect(layout.yaxis2.title.text).toBe('Drawdown');
+      expect(layout.yaxis2.ticksuffix).toBe('%');
+      expect(html).not.toContain('"text":"Drawdown [%]"');
       expect(html).not.toMatch(/"name":"Max Drawdown \(-[0-9.]+%\)"/);
     });
 

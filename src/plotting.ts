@@ -161,9 +161,9 @@ export class Plotting {
     // Top-to-bottom panel order follows backtesting.py:
     // Equity → Return → Drawdown → P/L → OHLC → Volume → reversed indicator subplots.
     const panels: PanelSpec[] = [];
-    if (showEquity) panels.push({ id: 'equity', title: relativeEquity ? 'Equity [%]' : 'Equity', weight: 2.2, axisIndex: 0, domain: [0, 0] });
-    if (showReturn) panels.push({ id: 'return', title: 'Return [%]', weight: 2.0, axisIndex: 0, domain: [0, 0] });
-    if (showDrawdown) panels.push({ id: 'drawdown', title: 'Drawdown [%]', weight: 1.8, axisIndex: 0, domain: [0, 0] });
+    if (showEquity) panels.push({ id: 'equity', title: 'Equity', weight: 2.2, axisIndex: 0, domain: [0, 0] });
+    if (showReturn) panels.push({ id: 'return', title: 'Return', weight: 2.0, axisIndex: 0, domain: [0, 0] });
+    if (showDrawdown) panels.push({ id: 'drawdown', title: 'Drawdown', weight: 1.8, axisIndex: 0, domain: [0, 0] });
     if (showPL) panels.push({ id: 'pnl', title: 'Profit / Loss', weight: 2.0, axisIndex: 0, domain: [0, 0] });
     if (showPrice) panels.push({ id: 'price', title: 'OHLC', weight: 3.8, axisIndex: 0, domain: [0, 0] });
     if (showVolume) panels.push({ id: 'volume', title: 'Volume', weight: 1.2, axisIndex: 0, domain: [0, 0] });
@@ -991,6 +991,8 @@ export class Plotting {
       low: price.low,
       close: price.close,
       name: 'OHLC',
+      hovertemplate: 'open: %{open}<br>high: %{high}<br>low: %{low}<br>close: %{close}<extra></extra>',
+      hoverlabel: { namelength: 0 },
       // Western convention: green when close > open, red when close < open.
       // Explicit fillcolor + line.color so Plotly doesn't fall back to a default
       // palette when only `line` is specified.
