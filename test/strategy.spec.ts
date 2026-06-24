@@ -133,17 +133,46 @@ describe('Strategy', () => {
 
     it('should default plotting options to overlay=true and empty color', () => {
       strategy.addIndicator('I', Array(strategy.data.length).fill(1));
-      expect(strategy.getIndicatorOptions('I')).toEqual({ overlay: true, color: '' });
+      expect(strategy.getIndicatorOptions('I')).toEqual({
+        overlay: true,
+        color: '',
+        scatter: false,
+        plot: true,
+      });
     });
 
     it('should accept overlay:false to mark the indicator as a subplot', () => {
       strategy.addIndicator('RSI', Array(strategy.data.length).fill(50), { overlay: false });
-      expect(strategy.getIndicatorOptions('RSI')).toEqual({ overlay: false, color: '' });
+      expect(strategy.getIndicatorOptions('RSI')).toEqual({
+        overlay: false,
+        color: '',
+        scatter: false,
+        plot: true,
+      });
     });
 
     it('should accept a color option', () => {
       strategy.addIndicator('SMA', Array(strategy.data.length).fill(1), { color: '#1f77b4' });
-      expect(strategy.getIndicatorOptions('SMA')).toEqual({ overlay: true, color: '#1f77b4' });
+      expect(strategy.getIndicatorOptions('SMA')).toEqual({
+        overlay: true,
+        color: '#1f77b4',
+        scatter: false,
+        plot: true,
+      });
+    });
+
+    it('should accept scatter and plot indicator options', () => {
+      strategy.addIndicator('points', Array(strategy.data.length).fill(1), {
+        color: ['#1f77b4', '#ff7f0e'],
+        scatter: true,
+        plot: false,
+      });
+      expect(strategy.getIndicatorOptions('points')).toEqual({
+        overlay: true,
+        color: ['#1f77b4', '#ff7f0e'],
+        scatter: true,
+        plot: false,
+      });
     });
   });
 
@@ -208,4 +237,3 @@ describe('Strategy', () => {
     });
   });
 });
-

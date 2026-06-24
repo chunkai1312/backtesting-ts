@@ -11,10 +11,8 @@ const PLOTLY_CDN = 'https://cdn.plot.ly/plotly-2.35.2.min.js';
 
 const COLOR_WIN = '#2ca02c';
 const COLOR_LOSS = '#d62728';
-// K-line: green = up (close > open), red = down (close < open) — Western convention,
-// matches backtesting.py's BULL / BEAR colors.
-const COLOR_BULL = '#26A69A'; // teal-green
-const COLOR_BEAR = '#EF5350'; // salmon-red
+const COLOR_BULL = 'lime';
+const COLOR_BEAR = 'tomato';
 const COLOR_PEAK = '#17becf';   // cyan
 const COLOR_FINAL = '#1f77b4';  // blue
 const COLOR_MAX_DD = '#d62728'; // red
@@ -52,9 +50,26 @@ interface PriceData {
 
 interface IndicatorEntry {
   name: string;
-  values: number[];
+  values: Array<number | null>;
   meta: Required<IndicatorOptions>;
+  color?: string;
 }
+
+interface BucketGroup {
+  key: string;
+  indices: number[];
+  date: string;
+}
+
+interface PlotModel {
+  priceData: PriceData;
+  equityCurve: EquityCurveRow[];
+  tradeLog: TradeLogRow[];
+  overlayIndicators: IndicatorEntry[];
+  subplotIndicators: IndicatorEntry[];
+}
+
+type CountedTradeLogRow = TradeLogRow & { __count?: number };
 
 export class Plotting {
   private readonly openBrowser: boolean;
@@ -103,43 +118,68 @@ export class Plotting {
   }
 
   private createHTML(): string {
-    const equityCurve = this.stats.equityCurve;
-    const tradeLog = this.stats.tradeLog;
+    const rawEquityCurve = this.stats.equityCurve;
+    const rawTradeLog = this.stats.tradeLog;
     const results = this.stats.results;
     /* istanbul ignore if */
-    if (!results || !equityCurve || !tradeLog) {
+    if (!results || !rawEquityCurve || !rawTradeLog) {
       throw new Error('Stats not computed');
     }
 
-    const priceData = this.collectPriceData();
+    const rawPriceData = this.collectPriceData();
 
-    const overlayIndicators: IndicatorEntry[] = [];
-    const subplotIndicators: IndicatorEntry[] = [];
-    this.collectIndicators(overlayIndicators, subplotIndicators);
+    const rawOverlayIndicators: IndicatorEntry[] = [];
+    const rawSubplotIndicators: IndicatorEntry[] = [];
+    this.collectIndicators(rawOverlayIndicators, rawSubplotIndicators);
+    const {
+      priceData,
+      equityCurve,
+      tradeLog,
+      overlayIndicators,
+      subplotIndicators,
+    } = this.preparePlotModel(
+      rawPriceData,
+      rawEquityCurve,
+      rawTradeLog,
+      rawOverlayIndicators,
+      rawSubplotIndicators,
+    );
 
     const showEquity = this.options.plotEquity !== false;
+    const showReturn = this.options.plotReturn === true;
+    const showDrawdown = this.options.plotDrawdown === true;
+    const showPL = this.options.plotPL !== false;
     const showTrades = this.options.plotTrades !== false;
-    const showPrice = this.options.plotPrice !== false;
+    const showPrice = true;
     const showVolume = this.options.plotVolume !== false;
     const relativeEquity = this.options.relativeEquity !== false;
 
-    // Top-to-bottom panel order: Equity → PnL → Price → [oscillator subplots] → Volume.
+    const orderedSubplotIndicators = this.options.reverseIndicators !== false
+      ? [...subplotIndicators].reverse()
+      : subplotIndicators;
+
+    // Top-to-bottom panel order follows backtesting.py:
+    // Equity → Return → Drawdown → P/L → OHLC → Volume → reversed indicator subplots.
     const panels: PanelSpec[] = [];
     if (showEquity) panels.push({ id: 'equity', title: relativeEquity ? 'Equity [%]' : 'Equity', weight: 2.2, axisIndex: 0, domain: [0, 0] });
-    if (showTrades) panels.push({ id: 'pnl', title: 'PnL [%]', weight: 2.0, axisIndex: 0, domain: [0, 0] });
-    if (showPrice) panels.push({ id: 'price', title: 'Price', weight: 3.8, axisIndex: 0, domain: [0, 0] });
+    if (showReturn) panels.push({ id: 'return', title: 'Return [%]', weight: 2.0, axisIndex: 0, domain: [0, 0] });
+    if (showDrawdown) panels.push({ id: 'drawdown', title: 'Drawdown [%]', weight: 1.8, axisIndex: 0, domain: [0, 0] });
+    if (showPL) panels.push({ id: 'pnl', title: 'Profit / Loss', weight: 2.0, axisIndex: 0, domain: [0, 0] });
+    if (showPrice) panels.push({ id: 'price', title: 'OHLC', weight: 3.8, axisIndex: 0, domain: [0, 0] });
+    if (showVolume) panels.push({ id: 'volume', title: 'Volume', weight: 1.2, axisIndex: 0, domain: [0, 0] });
     if (showPrice) {
-      for (const ind of subplotIndicators) {
+      for (const ind of orderedSubplotIndicators) {
         panels.push({ id: `ind_${ind.name}`, title: ind.name, weight: 1.0, axisIndex: 0, domain: [0, 0] });
       }
     }
-    if (showVolume) panels.push({ id: 'volume', title: 'Volume', weight: 1.2, axisIndex: 0, domain: [0, 0] });
 
     this.assignPanelDomains(panels);
 
     const traces: PlotlyTrace[] = [];
     const layout = this.buildLayout(panels, {
       relativeEquity,
+      showLegend: this.options.showLegend !== false,
+      plotWidth: this.options.plotWidth,
       strategyName: String(results[StatsIndex.Strategy]),
       startDate: String(results[StatsIndex.Start]),
       endDate: String(results[StatsIndex.End]),
@@ -147,11 +187,22 @@ export class Plotting {
 
     if (showEquity) {
       const axes = this.axesFor(panels, 'equity');
-      traces.push(...this.equityTraces(equityCurve, axes, relativeEquity));
+      traces.push(...this.equityTraces(equityCurve, axes, relativeEquity, !showDrawdown));
     }
 
-    if (showTrades) {
+    if (showReturn) {
+      const axes = this.axesFor(panels, 'return');
+      traces.push(...this.returnTraces(equityCurve, axes));
+    }
+
+    if (showDrawdown) {
+      const axes = this.axesFor(panels, 'drawdown');
+      traces.push(...this.drawdownTraces(equityCurve, axes));
+    }
+
+    if (showPL) {
       const axes = this.axesFor(panels, 'pnl');
+      traces.push(this.pnlZeroTrace(priceData.date, axes));
       traces.push(...this.pnlBubbleTraces(tradeLog, axes));
     }
 
@@ -159,8 +210,8 @@ export class Plotting {
       const priceAxes = this.axesFor(panels, 'price');
       // Superimposed coarser-resolution OHLC (weekly/monthly) drawn FIRST so the daily
       // candles render on top. Acts as a subtle background to highlight longer-term swings.
-      if (this.options.plotSuperimposedOhlc !== false) {
-        const rule = this.pickSuperimposedRule(priceData.date.length);
+      if (this.options.superimpose !== false) {
+        const rule = this.pickSuperimposedRule(priceData.date.length, this.options.superimpose);
         const aggregated = this.aggregateOHLC(priceData, rule);
         if (aggregated.date.length > 1 && aggregated.date.length < priceData.date.length) {
           traces.push(this.superimposedCandlestickTrace(aggregated, priceAxes));
@@ -170,10 +221,8 @@ export class Plotting {
       for (const ind of overlayIndicators) {
         traces.push(this.indicatorTrace(priceData.date, ind, priceAxes));
       }
-      traces.push(...this.tradeSegmentTraces(priceData, tradeLog, priceAxes));
-      for (const ind of subplotIndicators) {
-        const axes = this.axesFor(panels, `ind_${ind.name}`);
-        traces.push(this.indicatorTrace(priceData.date, ind, axes));
+      if (showTrades) {
+        traces.push(...this.tradeSegmentTraces(priceData, tradeLog, priceAxes));
       }
     }
 
@@ -181,6 +230,15 @@ export class Plotting {
       const axes = this.axesFor(panels, 'volume');
       traces.push(this.volumeTrace(priceData, axes));
     }
+
+    if (showPrice) {
+      for (const ind of orderedSubplotIndicators) {
+        const axes = this.axesFor(panels, `ind_${ind.name}`);
+        traces.push(this.indicatorTrace(priceData.date, ind, axes));
+      }
+    }
+
+    this.assignPanelLegends(traces, panels);
 
     return this.renderHTML('Backtest Result', traces, layout);
   }
@@ -205,6 +263,7 @@ export class Plotting {
   private renderHTML(title: string, traces: PlotlyTrace[], layout: Record<string, unknown>, divId = 'plot'): string {
     const tracesJson = JSON.stringify(traces);
     const layoutJson = JSON.stringify(layout);
+    const configJson = JSON.stringify(this.plotlyConfig(divId));
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -215,13 +274,13 @@ export class Plotting {
           <title>${title}</title>
           <style>
             body { margin: 0; padding: 16px; font-family: -apple-system, sans-serif; }
-            #${divId} { width: 100%; height: ${this.heightFor(divId)}px; }
+            #${divId} { width: ${this.widthFor(divId)} height: ${this.heightFor(divId)}px; }
           </style>
         </head>
         <body>
           <div id="${divId}"></div>
           <script>
-            Plotly.newPlot('${divId}', JSON.parse('${tracesJson}'), JSON.parse('${layoutJson}'));
+            Plotly.newPlot('${divId}', JSON.parse('${tracesJson}'), JSON.parse('${layoutJson}'), JSON.parse('${configJson}'));
           </script>
         </body>
       </html>
@@ -231,6 +290,27 @@ export class Plotting {
   private heightFor(divId: string): number {
     if (divId === 'plot_heatmap') return 600;
     return 900;
+  }
+
+  private widthFor(divId: string): string {
+    if (divId === 'plot' && this.options.plotWidth !== undefined) {
+      return `${this.options.plotWidth}px; max-width: 100%;`;
+    }
+    return '100%;';
+  }
+
+  private plotlyConfig(divId: string): Record<string, unknown> {
+    const fixedWidth = divId === 'plot' && this.options.plotWidth !== undefined;
+    return {
+      responsive: !fixedWidth,
+      displayModeBar: true,
+      displaylogo: false,
+      scrollZoom: true,
+      toImageButtonOptions: {
+        format: 'png',
+        filename: divId === 'plot_heatmap' ? 'optimization-heatmap' : 'backtest-result',
+      },
+    };
   }
 
   private collectPriceData(): PriceData {
@@ -250,18 +330,230 @@ export class Plotting {
     const strategy = (this.stats as unknown as { strategy: Strategy }).strategy;
     for (const name of Object.keys(strategy.indicators)) {
       const raw = strategy.indicators[name];
-      // Only flat number[] indicators are plottable; multi-line Record<string, number>[] are skipped.
-      // The warm-up bars are null-padded by addIndicator, so look for the first non-null entry.
       const sample = (raw as Array<number | null | Record<string, number>>).find(v => v != null);
-      if (sample === undefined || typeof sample !== 'number') continue;
       const meta = strategy.getIndicatorOptions(name);
       /* istanbul ignore next */
       if (!meta) continue;
-      const entry = { name, values: raw as number[], meta };
-      if (meta.overlay) overlay.push(entry);
-      else subplot.push(entry);
+      if (!meta.overlay && !meta.plot) continue;
+
+      const target = meta.overlay ? overlay : subplot;
+      if (sample === undefined || typeof sample === 'number') {
+        target.push({
+          name,
+          values: raw as Array<number | null>,
+          meta,
+          color: this.indicatorColor(meta.color, 0),
+        });
+        continue;
+      }
+
+      const recordSample = sample as Record<string, number>;
+      const keys = Object.keys(recordSample);
+      keys.forEach((key, i) => {
+        const values = (raw as Array<Record<string, number> | null>).map(v => (v == null ? null : v[key]));
+        target.push({
+          name: `${name}.${key}`,
+          values,
+          meta,
+          color: this.indicatorColor(meta.color, i),
+        });
+      });
     }
   }
+
+  private preparePlotModel(
+    priceData: PriceData,
+    equityCurve: EquityCurveRow[],
+    tradeLog: TradeLogRow[],
+    overlayIndicators: IndicatorEntry[],
+    subplotIndicators: IndicatorEntry[],
+  ): PlotModel {
+    const rule = this.pickResampleRule(priceData.date.length, this.options.resample);
+    if (!rule) {
+      return { priceData, equityCurve, tradeLog, overlayIndicators, subplotIndicators };
+    }
+
+    const buckets = this.bucketGroups(priceData.date, rule);
+    const bucketIndexByKey = new Map<string, number>();
+    const bucketIndexByRawIndex = new Map<number, number>();
+    buckets.forEach((bucket, bucketIndex) => {
+      bucketIndexByKey.set(bucket.key, bucketIndex);
+      bucket.indices.forEach(rawIndex => bucketIndexByRawIndex.set(rawIndex, bucketIndex));
+    });
+
+    return {
+      priceData: this.resamplePriceData(priceData, buckets),
+      equityCurve: this.resampleEquityCurve(equityCurve, buckets),
+      tradeLog: this.resampleTradeLog(
+        tradeLog,
+        priceData,
+        buckets,
+        bucketIndexByKey,
+        bucketIndexByRawIndex,
+        rule,
+      ),
+      overlayIndicators: overlayIndicators.map(ind => this.resampleIndicator(ind, buckets)),
+      subplotIndicators: subplotIndicators.map(ind => this.resampleIndicator(ind, buckets)),
+    };
+  }
+
+  private pickResampleRule(barCount: number, resample?: boolean | string): ResampleRule | undefined {
+    if (resample === false) return undefined;
+    if (typeof resample === 'string') return resample as ResampleRule;
+    if (barCount <= 10000) return undefined;
+    if (barCount <= 70000) return 'W';
+    if (barCount <= 300000) return 'M';
+    if (barCount <= 1000000) return 'Q';
+    return 'Y';
+  }
+
+  private bucketGroups(dates: string[], rule: ResampleRule): BucketGroup[] {
+    const groups: BucketGroup[] = [];
+    const groupByKey = new Map<string, BucketGroup>();
+    for (let i = 0; i < dates.length; i++) {
+      const key = bucketKey(dates[i], rule);
+      const existing = groupByKey.get(key);
+      if (existing) {
+        existing.indices.push(i);
+        existing.date = dates[i];
+      } else {
+        const group = { key, indices: [i], date: dates[i] };
+        groupByKey.set(key, group);
+        groups.push(group);
+      }
+    }
+    return groups;
+  }
+
+  private resamplePriceData(price: PriceData, buckets: BucketGroup[]): PriceData {
+    const out: PriceData = { date: [], open: [], high: [], low: [], close: [], volume: [] };
+    for (const bucket of buckets) {
+      const first = bucket.indices[0];
+      const last = bucket.indices[bucket.indices.length - 1];
+      let highMax = Number.NEGATIVE_INFINITY;
+      let lowMin = Number.POSITIVE_INFINITY;
+      let volumeSum = 0;
+      let finiteVolumeCount = 0;
+      for (const i of bucket.indices) {
+        if (price.high[i] > highMax) highMax = price.high[i];
+        if (price.low[i] < lowMin) lowMin = price.low[i];
+        if (Number.isFinite(price.volume[i])) {
+          volumeSum += price.volume[i];
+          finiteVolumeCount += 1;
+        }
+      }
+      out.date.push(bucket.date);
+      out.open.push(price.open[first]);
+      out.high.push(highMax);
+      out.low.push(lowMin);
+      out.close.push(price.close[last]);
+      out.volume.push(finiteVolumeCount ? volumeSum : NaN);
+    }
+    return out;
+  }
+
+  private resampleEquityCurve(curve: EquityCurveRow[], buckets: BucketGroup[]): EquityCurveRow[] {
+    return buckets.map(bucket => {
+      const last = bucket.indices[bucket.indices.length - 1];
+      return {
+        date: bucket.date,
+        [EquityCurveColumn.Equity]: curve[last][EquityCurveColumn.Equity],
+        [EquityCurveColumn.DrawdownPct]: this.maxFinite(bucket.indices.map(i => curve[i][EquityCurveColumn.DrawdownPct])),
+        [EquityCurveColumn.DrawdownDuration]: this.maxFinite(
+          bucket.indices.map(i => curve[i][EquityCurveColumn.DrawdownDuration]),
+        ),
+      };
+    });
+  }
+
+  private resampleIndicator(indicator: IndicatorEntry, buckets: BucketGroup[]): IndicatorEntry {
+    return {
+      ...indicator,
+      values: buckets.map(bucket => this.meanFiniteOrNull(bucket.indices.map(i => indicator.values[i]))),
+    };
+  }
+
+  private resampleTradeLog(
+    tradeLog: TradeLogRow[],
+    rawPrice: PriceData,
+    buckets: BucketGroup[],
+    bucketIndexByKey: Map<string, number>,
+    bucketIndexByRawIndex: Map<number, number>,
+    rule: ResampleRule,
+  ): TradeLogRow[] {
+    const tradesByExitBucket = new Map<number, TradeLogRow[]>();
+    for (const trade of tradeLog) {
+      const exitBucket = bucketIndexByKey.get(bucketKey(trade[TradeLogColumn.ExitTime], rule));
+      if (exitBucket === undefined) continue;
+      const list = tradesByExitBucket.get(exitBucket);
+      if (list) list.push(trade);
+      else tradesByExitBucket.set(exitBucket, [trade]);
+    }
+
+    const rows: TradeLogRow[] = [];
+    const sortedBuckets = Array.from(tradesByExitBucket.entries()).sort((a, b) => a[0] - b[0]);
+    for (const [exitBucket, trades] of sortedBuckets) {
+      const weighted = this.tradeWeightSum(trades);
+      const weightedAverage = (value: (trade: TradeLogRow) => number): number => {
+        if (weighted === 0) return this.meanFinite(trades.map(value));
+        return trades.reduce((sum, trade) => sum + value(trade) * Math.abs(trade[TradeLogColumn.Size]), 0) / weighted;
+      };
+      const entryBucket = Math.min(...trades.map(trade =>
+        bucketIndexByRawIndex.get(trade[TradeLogColumn.EntryBar]) ?? exitBucket,
+      ));
+      const sizeSum = trades.reduce((sum, trade) => sum + trade[TradeLogColumn.Size], 0);
+      const row: CountedTradeLogRow = {
+        [TradeLogColumn.Size]: sizeSum === 0 ? trades[0][TradeLogColumn.Size] : sizeSum,
+        [TradeLogColumn.EntryBar]: entryBucket,
+        [TradeLogColumn.ExitBar]: exitBucket,
+        [TradeLogColumn.EntryPrice]: weightedAverage(trade => trade[TradeLogColumn.EntryPrice]),
+        [TradeLogColumn.ExitPrice]: weightedAverage(trade =>
+          trade[TradeLogColumn.ExitPrice] ?? trade[TradeLogColumn.EntryPrice],
+        ),
+        [TradeLogColumn.PnL]: trades.reduce((sum, trade) => sum + trade[TradeLogColumn.PnL], 0),
+        [TradeLogColumn.ReturnPct]: weightedAverage(trade => trade[TradeLogColumn.ReturnPct]),
+        [TradeLogColumn.EntryTime]: buckets[entryBucket]?.date ?? rawPrice.date[trades[0][TradeLogColumn.EntryBar]],
+        [TradeLogColumn.ExitTime]: buckets[exitBucket].date,
+        [TradeLogColumn.Tag]: undefined,
+        [TradeLogColumn.Duration]: this.maxFinite(trades.map(trade => trade[TradeLogColumn.Duration])),
+        __count: trades.reduce((sum, trade) => sum + this.tradeRowCount(trade), 0),
+      };
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  private indicatorColor(color: string | string[], index: number): string | undefined {
+    if (Array.isArray(color)) return color[index % color.length];
+    return color || undefined;
+  }
+
+  private tradeWeightSum(trades: TradeLogRow[]): number {
+    return trades.reduce((sum, trade) => sum + Math.abs(trade[TradeLogColumn.Size]), 0);
+  }
+
+  private tradeRowCount(trade: TradeLogRow): number {
+    return (trade as CountedTradeLogRow).__count ?? 1;
+  }
+
+  private maxFinite(values: number[]): number {
+    const finite = values.filter(Number.isFinite);
+    if (!finite.length) return NaN;
+    return Math.max(...finite);
+  }
+
+  private meanFinite(values: number[]): number {
+    const finite = values.filter(Number.isFinite);
+    if (!finite.length) return NaN;
+    return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  }
+
+  private meanFiniteOrNull(values: Array<number | null | undefined>): number | null {
+    const finite = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    if (!finite.length) return null;
+    return finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  }
+
 
   private assignPanelDomains(panels: PanelSpec[]): void {
     /* istanbul ignore if */
@@ -292,9 +584,48 @@ export class Plotting {
     };
   }
 
+  private legendKeyForPanel(panel: PanelSpec): string {
+    return panel.axisIndex === 1 ? 'legend' : `legend${panel.axisIndex}`;
+  }
+
+  private panelLegendLayout(panel: PanelSpec): Record<string, unknown> {
+    return {
+      x: 0,
+      y: panel.domain[1],
+      xanchor: 'left',
+      yanchor: 'top',
+      bgcolor: 'rgba(255,255,255,0.85)',
+      bordercolor: '#333',
+      borderwidth: 1,
+      font: { size: 10 },
+      itemsizing: 'constant',
+      traceorder: 'normal',
+    };
+  }
+
+  private assignPanelLegends(traces: PlotlyTrace[], panels: PanelSpec[]): void {
+    const legendByYAxis = new Map<string, string>();
+    for (const panel of panels) {
+      const yAxis = panel.axisIndex === 1 ? 'y' : `y${panel.axisIndex}`;
+      legendByYAxis.set(yAxis, this.legendKeyForPanel(panel));
+    }
+    for (const trace of traces) {
+      if (trace.showlegend === false) continue;
+      const legend = legendByYAxis.get(trace.yaxis ?? 'y');
+      if (legend) trace.legend = legend;
+    }
+  }
+
   private buildLayout(
     panels: PanelSpec[],
-    opts: { relativeEquity: boolean; strategyName: string; startDate: string; endDate: string },
+    opts: {
+      relativeEquity: boolean;
+      showLegend: boolean;
+      plotWidth?: number;
+      strategyName: string;
+      startDate: string;
+      endDate: string;
+    },
   ): Record<string, unknown> {
     const layout: Record<string, unknown> = {
       title: {
@@ -306,21 +637,14 @@ export class Plotting {
         yanchor: 'top',
       },
       hovermode: 'x unified',
-      showlegend: true,
-      legend: {
-        x: 0,
-        y: 1,
-        xanchor: 'left',
-        yanchor: 'top',
-        bgcolor: 'rgba(255,255,255,0.85)',
-        bordercolor: '#333',
-        borderwidth: 1,
-        font: { size: 10 },
-      },
+      showlegend: opts.showLegend,
       margin: { l: 60, r: 30, t: 50, b: 40 },
       paper_bgcolor: '#ffffff',
       plot_bgcolor: '#ffffff',
     };
+    if (opts.plotWidth !== undefined) {
+      layout.width = opts.plotWidth;
+    }
     for (const panel of panels) {
       const idx = panel.axisIndex;
       const xKey = idx === 1 ? 'xaxis' : `xaxis${idx}`;
@@ -359,10 +683,11 @@ export class Plotting {
         mirror: true,
       };
       // PnL panel always shows percent; Equity panel shows percent only when relative.
-      if (panel.id === 'pnl' || (panel.id === 'equity' && opts.relativeEquity)) {
+      if (['pnl', 'return', 'drawdown'].includes(panel.id) || (panel.id === 'equity' && opts.relativeEquity)) {
         yAxis.ticksuffix = '%';
       }
       layout[yKey] = yAxis;
+      layout[this.legendKeyForPanel(panel)] = this.panelLegendLayout(panel);
     }
     return layout;
   }
@@ -373,6 +698,7 @@ export class Plotting {
     curve: EquityCurveRow[],
     axes: { x: string; y: string },
     relativeEquity: boolean,
+    showMaxDrawdownMarker: boolean,
   ): PlotlyTrace[] {
     const dates = curve.map(r => r.date);
     const rawEquity = curve.map(r => r[EquityCurveColumn.Equity]);
@@ -380,9 +706,10 @@ export class Plotting {
     const ddDuration = curve.map(r => r[EquityCurveColumn.DrawdownDuration]);
     const startEquity = rawEquity[0];
 
-    // Y values displayed on the panel — either absolute equity or % gain from start.
+    // Backtesting.py plots relative equity as an equity ratio percent, not as
+    // gain-from-start. The separate return panel owns the gain-from-start view.
     const toDisplay = (v: number): number =>
-      relativeEquity ? ((v - startEquity) / startEquity) * 100 : v;
+      relativeEquity ? (v / startEquity) * 100 : v;
     const equity = rawEquity.map(toDisplay);
 
     // Running max (high-watermark) for the drawdown fill.
@@ -428,14 +755,16 @@ export class Plotting {
     for (let i = 1; i < rawEquity.length; i++) {
       if (rawEquity[i] > rawEquity[peakIdx]) peakIdx = i;
     }
-    const peakReturnPct = ((rawEquity[peakIdx] - startEquity) / startEquity) * 100;
+    const peakLabelPct = relativeEquity
+      ? equity[peakIdx]
+      : ((rawEquity[peakIdx] - startEquity) / startEquity) * 100;
     traces.push({
       type: 'scatter',
       mode: 'markers',
       x: [dates[peakIdx]],
       y: [equity[peakIdx]],
       marker: { size: 8, color: COLOR_PEAK, line: { color: '#000', width: 1 } },
-      name: `Peak (${peakReturnPct.toFixed(1)}%)`,
+      name: `Peak (${peakLabelPct.toFixed(1)}%)`,
       hovertemplate: 'Peak<br>%{x}<br>%{y}<extra></extra>',
       xaxis: axes.x,
       yaxis: axes.y,
@@ -443,14 +772,16 @@ export class Plotting {
 
     // Final: last bar.
     const finalIdx = rawEquity.length - 1;
-    const finalReturnPct = ((rawEquity[finalIdx] - startEquity) / startEquity) * 100;
+    const finalLabelPct = relativeEquity
+      ? equity[finalIdx]
+      : ((rawEquity[finalIdx] - startEquity) / startEquity) * 100;
     traces.push({
       type: 'scatter',
       mode: 'markers',
       x: [dates[finalIdx]],
       y: [equity[finalIdx]],
       marker: { size: 8, color: COLOR_FINAL, line: { color: '#000', width: 1 } },
-      name: `Final (${finalReturnPct.toFixed(1)}%)`,
+      name: `Final (${finalLabelPct.toFixed(1)}%)`,
       hovertemplate: 'Final<br>%{x}<br>%{y}<extra></extra>',
       xaxis: axes.x,
       yaxis: axes.y,
@@ -462,7 +793,7 @@ export class Plotting {
       if (drawdownPct[i] > drawdownPct[maxDdIdx]) maxDdIdx = i;
     }
     const maxDdPctValue = drawdownPct[maxDdIdx] * 100;
-    if (maxDdPctValue > 0) {
+    if (showMaxDrawdownMarker && maxDdPctValue > 0) {
       traces.push({
         type: 'scatter',
         mode: 'markers',
@@ -511,7 +842,73 @@ export class Plotting {
     return traces;
   }
 
+  private returnTraces(curve: EquityCurveRow[], axes: { x: string; y: string }): PlotlyTrace[] {
+    const dates = curve.map(r => r.date);
+    const rawEquity = curve.map(r => r[EquityCurveColumn.Equity]);
+    const startEquity = rawEquity[0];
+    const returns = rawEquity.map(v => ((v - startEquity) / startEquity) * 100);
+    return [{
+      type: 'scatter',
+      mode: 'lines',
+      x: dates,
+      y: returns,
+      name: 'Return',
+      line: { color: COLOR_FINAL, width: 1.5 },
+      xaxis: axes.x,
+      yaxis: axes.y,
+    }];
+  }
+
+  private drawdownTraces(curve: EquityCurveRow[], axes: { x: string; y: string }): PlotlyTrace[] {
+    const dates = curve.map(r => r.date);
+    const drawdown = curve.map(r => -r[EquityCurveColumn.DrawdownPct] * 100);
+    let peakIdx = 0;
+    for (let i = 1; i < drawdown.length; i++) {
+      if (drawdown[i] < drawdown[peakIdx]) peakIdx = i;
+    }
+    const traces: PlotlyTrace[] = [{
+      type: 'scatter',
+      mode: 'lines',
+      x: dates,
+      y: drawdown,
+      name: 'Drawdown',
+      line: { color: COLOR_FINAL, width: 1.3 },
+      fill: 'tozeroy',
+      fillcolor: 'rgba(31,119,180,0.12)',
+      xaxis: axes.x,
+      yaxis: axes.y,
+    }];
+    if (drawdown[peakIdx] < 0) {
+      traces.push({
+        type: 'scatter',
+        mode: 'markers',
+        x: [dates[peakIdx]],
+        y: [drawdown[peakIdx]],
+        marker: { size: 8, color: COLOR_MAX_DD, line: { color: '#000', width: 1 } },
+        name: `Peak (${drawdown[peakIdx].toFixed(1)}%)`,
+        xaxis: axes.x,
+        yaxis: axes.y,
+      });
+    }
+    return traces;
+  }
+
   // ─── PnL panel: bubble plot + connecting line ──────────────────────────────
+
+  private pnlZeroTrace(dates: string[], axes: { x: string; y: string }): PlotlyTrace {
+    return {
+      type: 'scatter',
+      mode: 'lines',
+      x: [dates[0], dates[dates.length - 1]],
+      y: [0, 0],
+      line: { color: COLOR_GRID_LINE, width: 1, dash: 'dash' },
+      name: 'pnl-zero',
+      showlegend: false,
+      hoverinfo: 'skip',
+      xaxis: axes.x,
+      yaxis: axes.y,
+    };
+  }
 
   private pnlBubbleTraces(trades: TradeLogRow[], axes: { x: string; y: string }): PlotlyTrace[] {
     if (trades.length === 0) return [];
@@ -559,6 +956,7 @@ export class Plotting {
         marker: {
           size: sizes.map(scaleSize),
           color: colors,
+          symbol: trades.map(t => (t[TradeLogColumn.Size] > 0 ? 'triangle-up' : 'triangle-down')),
           line: { color: 'rgba(0,0,0,0.3)', width: 1 },
         },
         customdata: trades.map(t => [t[TradeLogColumn.Size], t[TradeLogColumn.PnL]]),
@@ -590,11 +988,11 @@ export class Plotting {
       // Explicit fillcolor + line.color so Plotly doesn't fall back to a default
       // palette when only `line` is specified.
       increasing: {
-        line: { color: COLOR_BULL, width: 1 },
+        line: { color: '#000000', width: 1 },
         fillcolor: COLOR_BULL,
       },
       decreasing: {
-        line: { color: COLOR_BEAR, width: 1 },
+        line: { color: '#000000', width: 1 },
         fillcolor: COLOR_BEAR,
       },
       xaxis: axes.x,
@@ -636,9 +1034,8 @@ export class Plotting {
     };
   }
 
-  private pickSuperimposedRule(barCount: number): ResampleRule {
-    const rule = this.options.superimposedOhlcRule;
-    if (rule && rule !== 'auto') return rule;
+  private pickSuperimposedRule(barCount: number, superimpose?: boolean | string): ResampleRule {
+    if (typeof superimpose === 'string') return superimpose as ResampleRule;
     // Auto thresholds chosen so the overlay has roughly 30–60 buckets — dense enough
     // that the coarser candles fit naturally next to the daily ones (vs being giant
     // background rectangles that overpower the foreground).
@@ -682,16 +1079,24 @@ export class Plotting {
   }
 
   private indicatorTrace(dates: string[], ind: IndicatorEntry, axes: { x: string; y: string }): PlotlyTrace {
-    return {
+    const trace: PlotlyTrace = {
       type: 'scatter',
-      mode: 'lines',
+      mode: ind.meta.scatter ? 'markers' : 'lines',
       x: dates,
       y: ind.values,
       name: ind.name,
-      line: ind.meta.color ? { color: ind.meta.color, width: 1.5 } : { width: 1.5 },
       xaxis: axes.x,
       yaxis: axes.y,
     };
+    if (ind.meta.scatter) {
+      trace.marker = ind.color ? { color: ind.color, size: 5 } : { size: 5 };
+    } else {
+      trace.line = ind.color ? { color: ind.color, width: 1.5 } : { width: 1.5 };
+    }
+    if (!ind.meta.plot) {
+      trace.visible = 'legendonly';
+    }
+    return trace;
   }
 
   /**
@@ -709,7 +1114,7 @@ export class Plotting {
     const wins = trades.filter(t => t[TradeLogColumn.PnL] > 0);
     const losses = trades.filter(t => t[TradeLogColumn.PnL] <= 0);
     const result: PlotlyTrace[] = [];
-    const legendName = `Trades (${trades.length})`;
+    const legendName = `Trades (${trades.reduce((sum, trade) => sum + this.tradeRowCount(trade), 0)})`;
     // Both traces share legendgroup 'trades' so a single legend entry toggles both.
     // The first emitted trace owns the visible legend label.
     if (wins.length) {
@@ -756,7 +1161,7 @@ export class Plotting {
       mode: 'lines',
       x,
       y,
-      line: { color, width: 6, dash: 'dot' },
+      line: { color, width: 8, dash: 'dot' },
       name,
       legendgroup: 'trades',
       showlegend: showInLegend,
@@ -773,8 +1178,8 @@ export class Plotting {
       if (i === 0) return COLOR_VOLUME_GREY;
       const close = price.close[i];
       const open = price.open[i];
-      if (close > open) return COLOR_WIN;
-      if (close < open) return COLOR_LOSS;
+      if (close > open) return COLOR_BULL;
+      if (close < open) return COLOR_BEAR;
       return COLOR_VOLUME_GREY;
     });
     return {

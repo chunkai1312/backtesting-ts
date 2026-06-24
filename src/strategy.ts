@@ -6,8 +6,12 @@ import { Context, OrderOptions } from './interfaces';
 export interface IndicatorOptions {
   /** Render the indicator as a line on the price panel (true) or in its own subplot (false). Default `true`. */
   overlay?: boolean;
-  /** Plotly line color for the indicator trace. */
-  color?: string;
+  /** Plotly color for the indicator trace, or one color per line for multi-line indicators. */
+  color?: string | string[];
+  /** Render the indicator as markers instead of a continuous line. Default `false`. */
+  scatter?: boolean;
+  /** Include the indicator in chart output. Default `true`. */
+  plot?: boolean;
 }
 
 export abstract class Strategy {
@@ -81,7 +85,7 @@ export abstract class Strategy {
   /**
    * Add an indicator. The optional `options` controls how the plotter renders it:
    * `overlay: true` (default) draws the indicator on the price panel; `overlay: false`
-   * gives it its own subplot. `color` is passed to Plotly as the line color.
+   * gives it its own subplot. `color`, `scatter`, and `plot` are passed to the plotter.
    */
   public addIndicator(
     name: string,
@@ -95,6 +99,8 @@ export abstract class Strategy {
     this._indicatorMeta[name] = {
       overlay: options?.overlay ?? true,
       color: options?.color ?? '',
+      scatter: options?.scatter ?? false,
+      plot: options?.plot ?? true,
     };
   }
 

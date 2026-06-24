@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { DateTime } from 'luxon';
 import { HistoricalData } from './historical-data';
-import { StatsOptions } from './interfaces';
+import { PlottingOptions, StatsOptions } from './interfaces';
 import { StatsIndex, EquityCurveColumn, TradeLogColumn } from './enums';
 import { Strategy } from './strategy';
 import { Trade } from './trade';
@@ -246,11 +246,11 @@ export class Stats {
     console.table(this._results);
   }
 
-  public plot() {
+  public plot(options?: PlottingOptions): void {
     if (!this._results) {
       throw new Error('No stats results');
     }
-    new Plotting(this).plot();
+    new Plotting(this, options).plot();
   }
 
   private computeExposureTime(barCount: number, tradeLog: TradeLogRow[]): number {
@@ -341,4 +341,3 @@ export class Stats {
     );
   }
 }
-

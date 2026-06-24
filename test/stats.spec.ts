@@ -71,9 +71,12 @@ describe('Stats', () => {
     it('should plot the equity curve', () => {
       const stats = new Stats(data, strategy, equity, trades, { riskFreeRate: 0 });
       stats.compute();
-      Plotting.prototype.plot = jest.fn();
-      stats.plot();
-      expect(Plotting.prototype.plot).toBeCalled();
+      const plotMock = jest.spyOn(Plotting.prototype, 'plot').mockImplementation(function (this: Plotting) {
+        expect((this as unknown as { options: unknown }).options).toMatchObject({ plotVolume: false });
+      });
+      stats.plot({ plotVolume: false });
+      expect(plotMock).toBeCalled();
+      plotMock.mockRestore();
     });
 
     it('should throw error when missing results', () => {

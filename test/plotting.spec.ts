@@ -11,8 +11,64 @@ jest.mock('open');
 jest.mock('html-minifier');
 
 const fixture = require('./fixtures/2330.json'); // eslint-disable-line @typescript-eslint/no-var-requires
+const syntheticFixture = (n: number, start = '2024-01-01') => {
+  const startDate = new Date(`${start}T00:00:00.000Z`);
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(startDate.getTime());
+    d.setUTCDate(startDate.getUTCDate() + i);
+    return {
+      date: d.toISOString().slice(0, 10),
+      open: 100 + i,
+      high: 105 + i,
+      low: 95 + i,
+      close: 101 + i,
+      volume: i + 1,
+    };
+  });
+};
 
 const lastRawHtml = (): string => (minify as jest.Mock).mock.calls[0][0] as string;
+const lastPlotTraces = (): Array<Record<string, any>> => {
+  const html = lastRawHtml();
+  const startToken = "Plotly.newPlot('plot', JSON.parse('";
+  const midToken = "'), JSON.parse('";
+  const start = html.indexOf(startToken);
+  if (start < 0) throw new Error('missing Plotly.newPlot start token');
+  const jsonStart = start + startToken.length;
+  const jsonEnd = html.indexOf(midToken, jsonStart);
+  if (jsonEnd < 0) throw new Error('missing Plotly.newPlot layout token');
+  return JSON.parse(html.slice(jsonStart, jsonEnd));
+};
+const lastPlotLayout = (): Record<string, any> => {
+  const html = lastRawHtml();
+  const startToken = "Plotly.newPlot('plot', JSON.parse('";
+  const midToken = "'), JSON.parse('";
+  const start = html.indexOf(startToken);
+  if (start < 0) throw new Error('missing Plotly.newPlot start token');
+  const tracesEnd = html.indexOf(midToken, start + startToken.length);
+  if (tracesEnd < 0) throw new Error('missing Plotly.newPlot layout token');
+  const layoutStart = tracesEnd + midToken.length;
+  const layoutEnd = html.indexOf(midToken, layoutStart);
+  if (layoutEnd < 0) throw new Error('missing Plotly.newPlot config token');
+  return JSON.parse(html.slice(layoutStart, layoutEnd));
+};
+const lastPlotConfig = (): Record<string, any> => {
+  const html = lastRawHtml();
+  const startToken = "Plotly.newPlot('plot', JSON.parse('";
+  const midToken = "'), JSON.parse('";
+  const endToken = "'));";
+  const start = html.indexOf(startToken);
+  if (start < 0) throw new Error('missing Plotly.newPlot start token');
+  const tracesEnd = html.indexOf(midToken, start + startToken.length);
+  if (tracesEnd < 0) throw new Error('missing Plotly.newPlot layout token');
+  const layoutStart = tracesEnd + midToken.length;
+  const layoutEnd = html.indexOf(midToken, layoutStart);
+  if (layoutEnd < 0) throw new Error('missing Plotly.newPlot config token');
+  const configStart = layoutEnd + midToken.length;
+  const configEnd = html.indexOf(endToken, configStart);
+  if (configEnd < 0) throw new Error('missing Plotly.newPlot end token');
+  return JSON.parse(html.slice(configStart, configEnd));
+};
 
 describe('Plotting', () => {
   let backtest: Backtest;
@@ -78,7 +134,7 @@ describe('Plotting', () => {
       expect(html).not.toContain('dfd.DataFrame');
     });
 
-    it('renders four panels by default in Equity → PnL → Price → Volume order', () => {
+    it('renders four panels by default in Equity → Profit / Loss → OHLC → Volume order', () => {
       const plotting = new Plotting(stats, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
@@ -92,6 +148,8 @@ describe('Plotting', () => {
       expect(html).toContain('"name":"Equity"');
       expect(html).toContain('"name":"Volume"');
       expect(html).toContain('"type":"candlestick"');
+      expect(html).toContain('"text":"Profit / Loss"');
+      expect(html).toContain('"text":"OHLC"');
       // PnL bubble trace name embeds trade count
       expect(html).toMatch(/"name":"Trades \(\d+\)"/);
     });
@@ -122,16 +180,24 @@ describe('Plotting', () => {
       expect(html).not.toMatch(/"name":"Final \(/);
     });
 
-    it('plotTrades:false drops the PnL panel (price-panel trade segments still render)', () => {
-      const plotting = new Plotting(stats, { openBrowser: false, plotTrades: false });
+    it('plotPL:false drops the P/L panel while price-panel trade segments still render', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, plotPL: false });
       plotting.plot();
       const html = lastRawHtml();
       // PnL bubble panel is gone (no `Trade PnL` trace, no PnL Y-axis with %)
       expect(html).not.toContain('"name":"Trade PnL"');
-      // Trade segments on the price panel still render — they're tied to plotPrice, not plotTrades
+      // Trade segments on the price panel still render — they're controlled by plotTrades
       expect(html).toMatch(/"name":"Trades \(\d+\)"/);
       // Equity annotations on a still-rendered Equity panel are unaffected
       expect(html).toMatch(/"name":"Peak \(/);
+    });
+
+    it('plotTrades:false drops price-panel trade segments but keeps the P/L panel', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, plotTrades: false });
+      plotting.plot();
+      const html = lastRawHtml();
+      expect(html).toContain('"name":"Trade PnL"');
+      expect(html).not.toMatch(/"name":"Trades \(\d+\)"/);
     });
 
     it('emits a single Trades (N) legend entry for entry-to-exit segments on the price panel', () => {
@@ -144,11 +210,11 @@ describe('Plotting', () => {
       expect(html).toMatch(/"name":"Trades \(\d+\)"/);
       const idx = html.search(/"name":"Trades \(\d+\)"/);
       const segment = html.slice(idx, idx + 400);
-      // Bind to price panel (yaxis3 in default Equity → PnL → Price → Volume order)
+      // Bind to OHLC panel (yaxis3 in default Equity → Profit / Loss → OHLC → Volume order)
       expect(segment).toContain('"yaxis":"y3"');
       // Dotted, thick line styling
       expect(segment).toContain('"dash":"dot"');
-      expect(segment).toContain('"width":6');
+      expect(segment).toContain('"width":8');
       // Legend group ties the two color traces together
       expect(html).toContain('"legendgroup":"trades"');
     });
@@ -161,11 +227,11 @@ describe('Plotting', () => {
       expect(html).toContain('"name":"lineB"');
       const idx = html.indexOf('"name":"lineA"');
       const segment = html.slice(idx, idx + 400);
-      // Price panel is yaxis3 in the new layout (Equity, PnL, Price, ...)
+      // OHLC panel is yaxis3 in the default layout (Equity, Profit / Loss, OHLC, ...)
       expect(segment).toContain('"yaxis":"y3"');
     });
 
-    it('overlay:false on an indicator creates an additional subplot between price and volume', async () => {
+    it('overlay:false on an indicator creates an additional subplot after volume', async () => {
       class WithSubplot extends SmaCross {
         init(): void {
           super.init();
@@ -182,9 +248,27 @@ describe('Plotting', () => {
       expect(html).not.toContain('"yaxis6"');
       const idx = html.indexOf('"name":"lineB_subplot"');
       expect(idx).toBeGreaterThan(0);
-      // Subplot indicator should NOT be on the price panel's y3
+      // Subplot indicator should be after the volume panel (y5 in default layout)
       const segment = html.slice(idx, idx + 400);
-      expect(segment).toMatch(/"yaxis":"y4"/);
+      expect(segment).toMatch(/"yaxis":"y5"/);
+    });
+
+    it('reverses non-overlay indicator panels by default', async () => {
+      class WithTwoSubplots extends SmaCross {
+        init(): void {
+          this.addIndicator('oscA', this.data.close.map(v => v - 10), { overlay: false });
+          this.addIndicator('oscB', this.data.close.map(v => v + 10), { overlay: false });
+        }
+        next(): void { /* no-op */ }
+      }
+      const bt = new Backtest(fixture, WithTwoSubplots, { cash: 1000000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      expect(traces.find(t => t.name === 'Volume')?.yaxis).toBe('y4');
+      expect(traces.find(t => t.name === 'oscB')?.yaxis).toBe('y5');
+      expect(traces.find(t => t.name === 'oscA')?.yaxis).toBe('y6');
     });
 
     it('uses the indicator color option in the line trace', async () => {
@@ -229,7 +313,7 @@ describe('Plotting', () => {
       expect(html).toContain('"fillcolor":"rgba(255,255,234,0.6)"');
     });
 
-    it('defaults to relativeEquity (percent gain mode), matching backtesting.py', () => {
+    it('defaults to relativeEquity on the backtesting.py 100%-based equity scale', () => {
       const plotting = new Plotting(stats, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
@@ -239,6 +323,27 @@ describe('Plotting', () => {
       const yaxisIdx = html.indexOf('"yaxis":{');
       const yAxisSlice = html.slice(yaxisIdx, yaxisIdx + 400);
       expect(yAxisSlice).toContain('"ticksuffix":"%"');
+
+      const traces = lastPlotTraces();
+      const equityTrace = traces.find(t => t.name === 'Equity');
+      expect(equityTrace).toBeDefined();
+      const equityY = equityTrace?.y as number[];
+      expect(equityY[0]).toBeCloseTo(100, 8);
+
+      const peakTrace = traces.find(t => typeof t.name === 'string' && t.name.startsWith('Peak ('));
+      expect(peakTrace).toBeDefined();
+      const peakY = (peakTrace?.y as number[])[0];
+      const peakLabel = (peakTrace?.name as string).match(/^Peak \((-?[0-9.]+)%\)$/);
+      expect(peakLabel).not.toBeNull();
+      expect(Number(peakLabel?.[1])).toBe(Number(peakY.toFixed(1)));
+
+      const finalTrace = traces.find(t => typeof t.name === 'string' && t.name.startsWith('Final ('));
+      expect(finalTrace).toBeDefined();
+      const finalY = (finalTrace?.y as number[])[0];
+      const finalLabel = (finalTrace?.name as string).match(/^Final \((-?[0-9.]+)%\)$/);
+      expect(finalLabel).not.toBeNull();
+      expect(finalY).toBeCloseTo(equityY[equityY.length - 1], 8);
+      expect(Number(finalLabel?.[1])).toBe(Number(finalY.toFixed(1)));
     });
 
     it('relativeEquity:false switches the equity panel back to raw $', () => {
@@ -285,14 +390,58 @@ describe('Plotting', () => {
       expect(html).toContain('"spikedash":"dot"');
     });
 
-    it('candlestick uses green-up / red-down colors with explicit fillcolor', () => {
+    it('candlestick uses black outlines with lime/tomato fills', () => {
       const plotting = new Plotting(stats, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
-      // Green for up days (close > open), red for down days — Western convention
-      // matching backtesting.py's BULL / BEAR colors.
-      expect(html).toContain('"increasing":{"line":{"color":"#26A69A","width":1},"fillcolor":"#26A69A"}');
-      expect(html).toContain('"decreasing":{"line":{"color":"#EF5350","width":1},"fillcolor":"#EF5350"}');
+      expect(html).toContain('"increasing":{"line":{"color":"#000000","width":1},"fillcolor":"lime"}');
+      expect(html).toContain('"decreasing":{"line":{"color":"#000000","width":1},"fillcolor":"tomato"}');
+    });
+
+    it('plotReturn:true adds a return panel', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, plotReturn: true });
+      plotting.plot();
+      const html = lastRawHtml();
+      expect(html).toContain('"name":"Return"');
+      expect(html).toContain('"text":"Return [%]"');
+      const returnTrace = lastPlotTraces().find(t => t.name === 'Return');
+      expect(returnTrace).toBeDefined();
+      expect((returnTrace?.y as number[])[0]).toBeCloseTo(0, 8);
+    });
+
+    it('plotDrawdown:true renders drawdown in its own panel instead of max drawdown marker on equity', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, plotDrawdown: true });
+      plotting.plot();
+      const html = lastRawHtml();
+      expect(html).toContain('"name":"Drawdown"');
+      expect(html).toContain('"text":"Drawdown [%]"');
+      expect(html).not.toMatch(/"name":"Max Drawdown \(-[0-9.]+%\)"/);
+    });
+
+    it('profit/loss markers use triangle symbols by position side', () => {
+      const plotting = new Plotting(stats, { openBrowser: false });
+      plotting.plot();
+      const trace = lastPlotTraces().find(t => t.name === 'Trade PnL');
+      expect(trace).toBeDefined();
+      expect(trace?.marker?.symbol).toEqual(expect.arrayContaining(['triangle-up', 'triangle-down']));
+    });
+
+    it('profit/loss panel includes a dashed zero baseline', () => {
+      const plotting = new Plotting(stats, { openBrowser: false });
+      plotting.plot();
+      const baseline = lastPlotTraces().find(t => t.name === 'pnl-zero');
+      expect(baseline).toBeDefined();
+      expect(baseline?.line).toMatchObject({ dash: 'dash' });
+      expect(baseline?.y).toEqual([0, 0]);
+      expect(baseline?.showlegend).toBe(false);
+    });
+
+    it('volume bars use lime/tomato parity colors by candle direction', () => {
+      const plotting = new Plotting(stats, { openBrowser: false });
+      plotting.plot();
+      const volume = lastPlotTraces().find(t => t.name === 'Volume');
+      expect(volume).toBeDefined();
+      expect(volume?.marker?.color).toEqual(expect.arrayContaining(['lime', 'tomato']));
     });
 
     it('layout uses light grid color and white background', () => {
@@ -313,14 +462,72 @@ describe('Plotting', () => {
       expect(html).toContain('"xanchor":"center"');
     });
 
-    it('positions the legend in the top-left with a thin border', () => {
+    it('positions panel legends in each owning panel top-left with a thin border', () => {
+      const plotting = new Plotting(stats, { openBrowser: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      const layout = lastPlotLayout();
+
+      expect(layout.legend).toMatchObject({
+        xanchor: 'left',
+        yanchor: 'top',
+        bordercolor: '#333',
+      });
+      expect(layout.legend.y).toBeCloseTo(layout.yaxis.domain[1], 8);
+      expect(layout.legend3).toMatchObject({
+        xanchor: 'left',
+        yanchor: 'top',
+        bordercolor: '#333',
+      });
+      expect(layout.legend3.y).toBeCloseTo(layout.yaxis3.domain[1], 8);
+
+      const peakTrace = traces.find(t => typeof t.name === 'string' && t.name.startsWith('Peak ('));
+      const ohlcTrace = traces.find(t => t.name === 'OHLC');
+      const tradeTrace = traces.find(t => typeof t.name === 'string' && t.name.startsWith('Trades ('));
+      const lineATrace = traces.find(t => t.name === 'lineA');
+      const lineBTrace = traces.find(t => t.name === 'lineB');
+      expect(peakTrace?.legend).toBe('legend');
+      expect(ohlcTrace?.legend).toBe('legend3');
+      expect(tradeTrace?.legend).toBe('legend3');
+      expect(lineATrace?.legend).toBe('legend3');
+      expect(lineBTrace?.legend).toBe('legend3');
+
+      const visibleLowerPanelTraces = traces.filter(
+        t => t.showlegend !== false && t.yaxis !== 'y',
+      );
+      expect(visibleLowerPanelTraces.every(t => t.legend !== undefined && t.legend !== 'legend')).toBe(true);
+    });
+
+    it('showLegend:false disables legend display at layout level', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, showLegend: false });
+      plotting.plot();
+      expect(lastPlotLayout().showlegend).toBe(false);
+    });
+
+    it('defaults to responsive full-width output and supports Plotly interaction tools', () => {
       const plotting = new Plotting(stats, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
-      expect(html).toContain('"legend":{');
-      expect(html).toContain('"xanchor":"left"');
-      expect(html).toContain('"yanchor":"top"');
-      expect(html).toContain('"bordercolor":"#333"');
+      const config = lastPlotConfig();
+      expect(html).toContain('#plot { width: 100%;');
+      expect(config).toMatchObject({
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        scrollZoom: true,
+      });
+      expect(config.toImageButtonOptions).toMatchObject({ format: 'png' });
+    });
+
+    it('plotWidth fixes the chart width when provided', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, plotWidth: 1200 });
+      plotting.plot();
+      const html = lastRawHtml();
+      const layout = lastPlotLayout();
+      const config = lastPlotConfig();
+      expect(html).toContain('#plot { width: 1200px;');
+      expect(layout.width).toBe(1200);
+      expect(config.responsive).toBe(false);
     });
 
     it('renders a superimposed coarser-resolution OHLC overlay by default', () => {
@@ -338,8 +545,8 @@ describe('Plotting', () => {
       expect(mainIdx).toBeGreaterThan(coarserIdx);
     });
 
-    it('plotSuperimposedOhlc:false omits the coarser overlay', () => {
-      const plotting = new Plotting(stats, { openBrowser: false, plotSuperimposedOhlc: false });
+    it('superimpose:false omits the coarser overlay', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, superimpose: false });
       plotting.plot();
       const html = lastRawHtml();
       expect(html).not.toContain('"name":"OHLC (coarser)"');
@@ -415,8 +622,8 @@ describe('Plotting', () => {
       expect(mCount).toBeGreaterThan(5);
     });
 
-    it('superimposedOhlcRule:Q forces quarterly aggregation', () => {
-      const plotting = new Plotting(stats, { openBrowser: false, superimposedOhlcRule: 'Q' });
+    it('superimpose:Q forces quarterly aggregation', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, superimpose: 'Q' });
       plotting.plot();
       const html = lastRawHtml();
       expect(html).toContain('"name":"OHLC (coarser)"');
@@ -428,6 +635,119 @@ describe('Plotting', () => {
       const dateCount = xMatch[1].split(',').length;
       expect(dateCount).toBeGreaterThan(1);
       expect(dateCount).toBeLessThan(30);
+    });
+
+    it('superimpose:M forces monthly aggregation', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, superimpose: 'M' });
+      plotting.plot();
+      const html = lastRawHtml();
+      const xMatch = html.match(/"type":"candlestick","x":\[([^\]]+)\]/);
+      expect(xMatch).not.toBeNull();
+      if (!xMatch) throw new Error('expected coarser candlestick x');
+      const dateCount = xMatch[1].split(',').length;
+      expect(dateCount).toBeGreaterThan(20);
+      expect(dateCount).toBeLessThan(50);
+    });
+
+    it('superimpose rejects unsupported aggregation rules predictably', () => {
+      const plotting = new Plotting(stats, { openBrowser: false, superimpose: 'D' });
+      expect(() => plotting.plot()).toThrow(RangeError);
+    });
+
+    it('resample:true keeps raw bars at or below the automatic threshold', async () => {
+      class FlatWithIndicator extends SmaCross {
+        init(): void {
+          this.addIndicator('trend', this.data.close);
+        }
+        next(): void { /* no-op */ }
+      }
+      const bt = new Backtest(syntheticFixture(90), FlatWithIndicator, { cash: 1000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false, resample: true, superimpose: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      const ohlc = traces.find(t => t.name === 'OHLC');
+      expect(ohlc?.x).toHaveLength(90);
+      expect(traces.find(t => t.name === 'Equity')?.x).toHaveLength(90);
+      expect(traces.find(t => t.name === 'trend')?.x).toHaveLength(90);
+    });
+
+    it('resample:W aggregates OHLCV by weekly buckets', async () => {
+      class FlatStrategy extends SmaCross {
+        init(): void { /* no indicators */ }
+        next(): void { /* no trades */ }
+      }
+      const bt = new Backtest(syntheticFixture(10), FlatStrategy, { cash: 1000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false, resample: 'W', superimpose: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      const ohlc = traces.find(t => t.name === 'OHLC');
+      const volume = traces.find(t => t.name === 'Volume');
+      expect(ohlc?.x).toHaveLength(2);
+      expect(ohlc?.open?.[0]).toBe(100);
+      expect(ohlc?.high?.[0]).toBe(111);
+      expect(ohlc?.low?.[0]).toBe(95);
+      expect(ohlc?.close?.[0]).toBe(107);
+      expect(volume?.y?.[0]).toBe(28);
+    });
+
+    it('resample:true automatically downsamples datasets above 10000 candles and aligns traces', async () => {
+      class FlatWithIndicator extends SmaCross {
+        init(): void {
+          this.addIndicator('trend', this.data.close);
+        }
+        next(): void { /* no-op */ }
+      }
+      const n = 10001;
+      const bt = new Backtest(syntheticFixture(n), FlatWithIndicator, { cash: 20000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false, resample: true, superimpose: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      const ohlc = traces.find(t => t.name === 'OHLC');
+      const equity = traces.find(t => t.name === 'Equity');
+      const volume = traces.find(t => t.name === 'Volume');
+      const trend = traces.find(t => t.name === 'trend');
+      expect(ohlc?.x.length).toBeLessThan(n);
+      expect(equity?.x).toHaveLength(ohlc?.x.length);
+      expect(volume?.x).toHaveLength(ohlc?.x.length);
+      expect(trend?.x).toHaveLength(ohlc?.x.length);
+    });
+
+    it('resample:false preserves raw bars above the automatic threshold', async () => {
+      class FlatStrategy extends SmaCross {
+        init(): void { /* no indicators */ }
+        next(): void { /* no trades */ }
+      }
+      const n = 10001;
+      const bt = new Backtest(syntheticFixture(n), FlatStrategy, { cash: 20000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false, resample: false, superimpose: false });
+      plotting.plot();
+      const ohlc = lastPlotTraces().find(t => t.name === 'OHLC');
+      expect(ohlc?.x).toHaveLength(n);
+    });
+
+    it('resamples trades by exit bucket while preserving the original trade count label', async () => {
+      class BucketedTrades extends SmaCross {
+        init(): void { /* no indicators */ }
+        next(ctx: import('../src').Context): void {
+          if (ctx.index === 1) this.buy({ size: 10 });
+          if (ctx.index === 2) this.sell({ size: 10 });
+          if (ctx.index === 3) this.buy({ size: 20 });
+          if (ctx.index === 4) this.sell({ size: 20 });
+        }
+      }
+      const bt = new Backtest(syntheticFixture(14), BucketedTrades, { cash: 100000 });
+      const s = await bt.run();
+      expect(s.tradeLog).toHaveLength(2);
+      const plotting = new Plotting(s, { openBrowser: false, resample: 'W', superimpose: false });
+      plotting.plot();
+      const traces = lastPlotTraces();
+      const pnl = traces.find(t => t.name === 'Trade PnL');
+      expect(pnl?.x).toHaveLength(1);
+      expect(traces.some(t => t.name === 'Trades (2)')).toBe(true);
     });
 
     it('frames each panel with #666666 axis lines and mirrored borders', () => {
@@ -568,12 +888,12 @@ describe('Plotting', () => {
   });
 
   describe('multi-line / object-shaped indicators', () => {
-    it('skips Record-typed indicators silently', async () => {
+    it('renders Record-typed indicators as one trace per named line', async () => {
       class WithObjectIndicator extends SmaCross {
         init(): void {
           super.init();
           const objSeries = this.data.close.map(v => ({ upper: v + 1, lower: v - 1 }));
-          this.addIndicator('bands', objSeries);
+          this.addIndicator('bands', objSeries, { color: ['#9467bd', '#8c564b'] });
         }
       }
       const bt = new Backtest(fixture, WithObjectIndicator, { cash: 1000000 });
@@ -581,8 +901,43 @@ describe('Plotting', () => {
       const plotting = new Plotting(s, { openBrowser: false });
       plotting.plot();
       const html = lastRawHtml();
-      expect(html).not.toContain('"name":"bands"');
+      expect(html).toContain('"name":"bands.upper"');
+      expect(html).toContain('"name":"bands.lower"');
+      expect(html).toContain('"#9467bd"');
+      expect(html).toContain('"#8c564b"');
       expect(html).toContain('"name":"lineA"');
+    });
+
+    it('renders scatter indicators as marker traces', async () => {
+      class WithScatterIndicator extends SmaCross {
+        init(): void {
+          this.addIndicator('points', this.data.close, { scatter: true, color: '#111111' });
+        }
+        next(): void { /* no-op */ }
+      }
+      const bt = new Backtest(fixture, WithScatterIndicator, { cash: 1000000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false });
+      plotting.plot();
+      const trace = lastPlotTraces().find(t => t.name === 'points');
+      expect(trace).toBeDefined();
+      expect(trace?.mode).toBe('markers');
+      expect(trace?.marker).toMatchObject({ color: '#111111' });
+    });
+
+    it('omits non-overlay indicators with plot:false', async () => {
+      class WithHiddenSubplot extends SmaCross {
+        init(): void {
+          this.addIndicator('hidden', this.data.close, { overlay: false, plot: false });
+        }
+        next(): void { /* no-op */ }
+      }
+      const bt = new Backtest(fixture, WithHiddenSubplot, { cash: 1000000 });
+      const s = await bt.run();
+      const plotting = new Plotting(s, { openBrowser: false });
+      plotting.plot();
+      const html = lastRawHtml();
+      expect(html).not.toContain('"name":"hidden"');
     });
   });
 });
