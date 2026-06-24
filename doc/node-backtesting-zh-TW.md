@@ -5,6 +5,7 @@
 - [Class: Backtest](#class-backtest)
   - [Constructor: new Backtest(data, Strategy[, options])](#constructor-new-backtestdata-strategy-options)
   - [backtest.run()](#backtestrun)
+  - [backtest.optimize()](#backtestoptimizeoptions)
   - [backtest.print()](#backtestprint)
   - [backtest.plot()](#backtestplot)
 - [Class: Strategy](#class-strategy)
@@ -12,9 +13,9 @@
   - [strategy.next(context)](#strategynextcontext)
   - [strategy.buy(options)](#strategybuyoptions)
   - [strategy.sell(options)](#strategyselloptions)
-  - [strategy.addIndicator(name, values)](#strategyaddindicatorname-values)
+  - [strategy.addIndicator(name, values[, options])](#strategyaddindicatorname-values-options)
   - [strategy.getIndicator(name)](#strategygetindicatorname)
-  - [strategy.getSignal(name, values)](#strategyaddsignalname-values)
+  - [strategy.addSignal(name, values)](#strategyaddsignalname-values)
   - [strategy.getSignal(name)](#strategygetsignalname)
   - [strategy.data](#strategydata)
   - [strategy.equity](#strategyequity)
@@ -25,7 +26,7 @@
 - [Class: Position](#class-position)
   - [position.size](#positionsize)
   - [position.pl](#positionpl)
-  - [position.plPct](#positionplPct)
+  - [position.plPct](#positionplpct)
   - [position.isLong](#positionislong)
   - [position.isShort](#positionisshort)
   - [position.close()](#positioncloseportion)
@@ -35,6 +36,7 @@
   - [order.stop](#orderstop)
   - [order.sl](#ordersl)
   - [order.tp](#ordertp)
+  - [order.tag](#ordertag)
   - [order.isLong](#orderislong)
   - [order.isShort](#orderisshort)
   - [order.isContingent](#orderiscontingent)
@@ -45,8 +47,7 @@
   - [trade.exitPrice](#tradeexitprice)
   - [trade.entryBar](#tradeentrybar)
   - [trade.exitBar](#tradeexitbar)
-  - [trade.slOrder](#tradeslorder)
-  - [trade.tpOrder](#tradetporder)
+  - [trade.tag](#tradetag)
   - [trade.entryTime](#tradeentrytime)
   - [trade.exitTime](#tradeexittime)
   - [trade.isLong](#tradeislong)
@@ -68,11 +69,12 @@
 - `Strategy` {Strategy} 一個自訂的交易策略類別，繼承自 `Strategy`。
 - `options` {Object}
   - `cash` {number} 初始資金。**預設值：**`10000`。
-  - `commission` {number} 手續費率。**預設值：**`0`.
-  - `margin` {number} 槓桿帳戶所需的保證金比率。**預設值：**`1`.
-  - `tradeOnClose` {boolean} `true` 表示市場訂單會以當前Ｋ棒的收盤價為基準成交，而非下一根Ｋ棒的開盤價。**預設值：**`false`.
-  - `hedging` {boolean} `true` 表示允許同時在兩個方向上交易。如果設為 `false`，則相反方向的訂單首先以先進先出（FIFO）的方式關閉現有交易。**預設值：**`false`.
-  - `exclusiveOrders` {boolean} `true` 表示每個新訂單都會自動關閉之前的交易/持倉，以確保每次只會存在一個（多頭或空頭）交易。**預設值：**`false`.
+  - `commission` {number} 相對手續費率，進場與出場皆以現金費用扣除；進出場成交價不會被手續費改寫，已平倉交易的 P/L 與報酬率會扣除兩次費用。**預設值：**`0`。
+  - `margin` {number} 槓桿帳戶所需的保證金比率。**預設值：**`1`。
+  - `tradeOnClose` {boolean} `true` 表示市場訂單會以當前Ｋ棒的收盤價為基準成交，而非下一根Ｋ棒的開盤價。**預設值：**`false`。
+  - `hedging` {boolean} `true` 表示允許同時在兩個方向上交易。如果設為 `false`，則相反方向的訂單首先以先進先出（FIFO）的方式關閉現有交易。**預設值：**`false`。
+  - `exclusiveOrders` {boolean} `true` 表示每個新訂單都會自動關閉之前的交易/持倉，以確保每次只會存在一個（多頭或空頭）交易。**預設值：**`false`。
+  - `finalizeTrades` {boolean} `true` 表示在最後一根 bar 強制關閉期末未平倉交易，並納入已平倉交易、trade log、交易統計與圖表交易數。為 `false` 時，期末 equity 仍採 mark-to-market，但期末未平倉交易不納入交易統計。**預設值：**`false`。
 
 建立一個新的 `Backtest` 實體。
 
@@ -120,7 +122,8 @@
 順序：equity、profit / loss、OHLC、volume。支援的繪圖選項包含 `filename`、
 `openBrowser`、`plotWidth`、`plotEquity`、`plotReturn`、`plotPL`、`plotVolume`、
 `plotDrawdown`、`plotTrades`、`smoothEquity`、`relativeEquity`、`superimpose`、
-`resample`、`reverseIndicators`、`showLegend`。
+`resample`、`reverseIndicators`、`showLegend`。`smoothEquity` 目前僅作為 API parity
+選項被接受；現行 Plotly renderer 尚未套用 equity curve smoothing。
 
 ## Class: Strategy
 
@@ -140,7 +143,7 @@
     - `high` {number} Ｋ棒週期的最高價。
     - `low` {number} Ｋ棒週期的最低價。
     - `close` {number} Ｋ棒週期的收盤價。
-    - `volume` {number} Ｋ棒週期的成交價。
+    - `volume` {number} Ｋ棒週期的成交量。
   - `indicators` {Map} 存取目前Ｋ棒的自訂指標數值。
   - `signals` {Map} 存取目前Ｋ棒的自訂交易訊號。
   - `prev` {Object} 前一根Ｋ棒的狀態。
@@ -148,26 +151,26 @@
 ### `strategy.buy(options)`
 
 - `options` {Object}
-  - `size` {number} 訂單的數量。
-  - `limitPrice` {number} 限價單的訂單限價。若為 `undefined` 則為市價單，將以下一個可用價格來成交。
-  - `stopPrice` {number} 停損單的訂單價格。若為 `undefined` 表示未設置停損單，或者停損單已經被觸發。
-  - `slPrice` {number} 設定止損價格，若設置該價格，則在該訂單執行後，會建立一個新的條件市價單。
-  - `tpPrice` {number} 設定止盈價格，若設置該價格，則在該訂單執行後，會建立一個新的條件限價單。
-  - `price` {number} 執行交易的價格。
+  - `size` {number} 訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。
+  - `limitPrice` {number} _選填。_ 限價單的訂單限價。
+  - `stopPrice` {number} _選填。_ 停損觸發價格。
+  - `slPrice` {number} _選填。_ 此訂單開倉後的 stop-loss 價格。
+  - `tpPrice` {number} _選填。_ 此訂單開倉後的 take-profit 價格。
+  - `tag` {Record<string, string>} 複製到訂單與成交交易上的 metadata。
 
-下單買進。
+下單買進。broker 會依 bar data、order type 與 `tradeOnClose` 決定成交價。
 
 ### `strategy.sell(options)`
 
 - `options` {Object}
-  - `size` {number} 訂單的數量。
-  - `limitPrice` {number} 限價單的訂單限價，`undefined` 則為市價單，將以下一個可用價格來成交。
-  - `stopPrice` {number} 停損單的訂單價格。`undefined` 表示未設置停損單，或者停損單已經被觸發。
-  - `slPrice` {number} 設定止損價格。若設置該價格，則在該訂單執行後，會建立一個新的條件市價單。
-  - `tpPrice` {number} 設定止盈價格。若設置該價格，則在該訂單執行後，會建立一個新的條件限價單。
-  - `price` {number} 執行交易的價格。
+  - `size` {number} 正數訂單數量。介於 `0` 到 `1` 的小數會解讀為可用流動性的比例；大於或等於 `1` 的值會解讀為絕對單位數。
+  - `limitPrice` {number} _選填。_ 限價單的訂單限價。
+  - `stopPrice` {number} _選填。_ 停損觸發價格。
+  - `slPrice` {number} _選填。_ 此訂單開倉後的 stop-loss 價格。
+  - `tpPrice` {number} _選填。_ 此訂單開倉後的 take-profit 價格。
+  - `tag` {Record<string, string>} 複製到訂單與成交交易上的 metadata。
 
-下單賣出。
+下單賣出。broker 內部會以負數表示空單訂單與交易。
 
 ### `strategy.addIndicator(name, values[, options])`
 
@@ -186,13 +189,6 @@
 - `name` {string} 指標名稱。
 
 按名稱取得指標值。
-
-### `strategy.getIndicatorOptions(name)`
-
-- `name` {string} 指標名稱。
-- 回傳：`{ overlay: boolean; color: string | string[]; scatter: boolean; plot: boolean } | undefined`
-
-取得 `addIndicator()` 提供的繪圖選項；若名稱不存在回 `undefined`。
 
 ### `strategy.addSignal(name, values)`
 
@@ -295,27 +291,33 @@
 
 ### order.limit
 
-- {number}
+- {number | undefined}
 
 限價單的訂單限價。若為 `undefined` 則為市價單，將以下一個可用價格來成交。
 
 ### order.stop
 
-- {number}
+- {number | undefined}
 
 停損單的訂單價格。若為 `undefined` 表示未設置停損單，或者停損單已經被觸發。
 
 ### order.sl
 
-- {number}
+- {number | undefined}
 
 設定止損價格，若設置該價格，則在該訂單執行後，會建立一個新的條件市價單。
 
 ### order.tp
 
-- {number}
+- {number | undefined}
 
 設定止盈價格，若設置該價格，則在該訂單執行後，會建立一個新的條件限價單。
+
+### order.tag
+
+- {Record<string, string> | undefined}
+
+隨訂單帶入，並複製到成交交易上的 metadata。
 
 ### order.isLong
 
@@ -373,17 +375,11 @@
 
 該交易出場的Ｋ棒索引（如果交易仍在進行中則為 `undefined`）。
 
-### trade.slOrder
+### trade.tag
 
-- {Order}
+- {Record<string, string> | undefined}
 
-取得止損訂單。
-
-### trade.tpOrder
-
-- {Order}
-
-取得止盈訂單。
+從開啟此交易的訂單繼承而來的 metadata。
 
 ### trade.entryTime
 
@@ -413,13 +409,13 @@
 
 - {number}
 
-該交易盈利（正）或虧損（負）的現金金額。
+該交易盈利（正）或虧損（負）的現金金額。已平倉交易會扣除進場與出場手續費。
 
 ### trade.plPct
 
 - {number}
 
-該交易盈利（profit）或虧損（loss）的百分比。
+該交易盈利（profit）或虧損（loss）的比例。已平倉交易會扣除進場與出場手續費。
 
 ### trade.value
 
@@ -429,52 +425,19 @@
 
 ### trade.sl
 
-- {number}
+- {number | undefined}
 
-該交易關閉的止損價格。
+該交易關閉的止損價格。指定數字會建立或更新內部條件止損單；指定 `undefined` 或 `0` 會取消該條件單。
 
 ### trade.tp
 
-- {number}
+- {number | undefined}
 
-該交易關閉的止盈價格。
+該交易關閉的止盈價格。指定數字會建立或更新內部條件止盈單；指定 `undefined` 或 `0` 會取消該條件單。
 
 ### trade.close()
 
 下達新的委託單（`Order`）並按照下一個市場價格關閉部分（`portion`）交易。
-
-### trade.isTrailing
-
-- {boolean}
-
-若該交易以 `trailPercent` 或 `trailAmount` 開倉且 trailing 尚未被停用（例如被指派固定 `trade.sl = price`），回 `true`。
-
-### trade.trailPercent
-
-- {number | undefined}
-
-以百分比表示的移動停損距離；非 trailing 模式時為 `undefined`。
-
-### trade.trailAmount
-
-- {number | undefined}
-
-以絕對價差表示的移動停損距離；非 trailing 模式時為 `undefined`。
-
-### trade.trailingDistance
-
-- {number | undefined}
-
-當前 trailing 峰值（多 = `peakHigh`、空 = `peakLow`）與目前 SL 價格的絕對距離。非 trailing 或尚未建立 SL 時為 `undefined`。
-
-## 委託單 trailing 選項
-
-`OrderOptions` 在既有的 `slPrice / tpPrice / limitPrice / stopPrice` 之外，另接受：
-
-- `trailPercent` {number} — 以百分比表示的 trailing 距離（如 `0.05` 表示 5%），需符合 `0 < trailPercent < 1`。
-- `trailAmount` {number} — 以絕對價格表示的 trailing 距離，需 `> 0`。
-
-兩者同時提供會拋 `TypeError`。對應的 `Trade` 會在每根 bar 朝有利方向更新 SL（多 = `peakHigh * (1 - trailPercent)`、空 = `peakLow * (1 + trailPercent)`），絕不反向。
 
 ## 策略輔助函式
 

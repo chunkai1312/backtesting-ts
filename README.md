@@ -288,19 +288,22 @@ Defaults: `plotEquity: true`, `plotReturn: false`, `plotPL: true`,
 `plotVolume: true`, `plotDrawdown: false`, `plotTrades: true`,
 `smoothEquity: false`, `relativeEquity: true`, `superimpose: true`,
 `resample: true`, `reverseIndicators: true`, and `showLegend: true`.
+`smoothEquity` is accepted for API parity; the current Plotly renderer does not
+smooth the equity curve yet.
 
-Breaking migration notes:
+Current behavior notes:
 
-- `plotPrice` was removed; the OHLC panel is always rendered.
-- `plotSuperimposedOhlc` was replaced by `superimpose`.
-- `superimposedOhlcRule` was replaced by `superimpose: 'W' | 'M' | 'Q' | 'Y'`.
+- The OHLC panel is always rendered.
+- `superimpose` controls the coarser-resolution OHLC overlay; pass `false`, `true`, or a rule such as `'W'`, `'M'`, `'Q'`, or `'Y'`.
 - `plotPL` controls the profit/loss panel; `plotTrades` controls trade segments on the OHLC panel.
-- Final open trades are no longer force-closed by default; set `finalizeTrades: true` on `BacktestOptions` to include them in trade statistics and plotted trade counts.
-- Numeric `commission` now matches `backtesting.py`: entry/exit prices stay unadjusted, commissions are charged as cash fees on both entry and exit, relative order sizing accounts for per-unit commission, and closed-trade P/L / return are reported net of both fees.
+- Final open trades remain open by default; set `finalizeTrades: true` on `BacktestOptions` to include them in trade statistics and plotted trade counts.
+- Numeric `commission` keeps entry/exit prices unadjusted, charges cash fees on both entry and exit, accounts for per-unit commission in relative order sizing, and reports closed-trade P/L / return net of both fees.
+- `Strategy.buy()` / `Strategy.sell()` accept `size`, `limitPrice`, `stopPrice`, `slPrice`, `tpPrice`, and `tag`. Execution prices are determined by market, limit, stop, and `tradeOnClose` rules.
+- For strategy-level stop management, update writable `trade.sl` / `trade.tp` inside `Strategy.next()`.
 
 Indicators registered with `addIndicator(name, values, options)` honor:
 
-- `overlay: true` (default) — draw on the price panel
+- `overlay: true` (default) — draw on the OHLC panel
 - `overlay: false` — render in its own subplot after volume (useful for RSI / MACD)
 - `color` — a CSS color string, or an array of colors for multi-line indicators
 - `scatter: true` — render markers instead of a continuous line
@@ -315,20 +318,6 @@ const result = await backtest.optimize({
 });
 new Plotting(result.best).plotHeatmap(result.heatmap, { filename: 'heatmap.html' });
 ```
-
-### Trailing stop loss
-
-Pass `trailPercent` (fractional, e.g. `0.05` for 5%) or `trailAmount` (absolute price units) to `buy()` / `sell()` to attach a trailing stop:
-
-```js
-// Long with 5% trailing stop:
-this.buy({ size: 1000, trailPercent: 0.05 });
-
-// Short with $5 trailing stop combined with a hard initial floor:
-this.sell({ size: 1000, slPrice: 110, trailPercent: 0.05 });
-```
-
-The SL ratchets in the favorable direction every bar (`peakHigh * (1 - trailPercent)` for long, `peakLow * (1 + trailPercent)` for short) and never moves backward. `trade.isTrailing` and `trade.trailingDistance` let you inspect status mid-trade. Assigning `trade.sl = price` switches the trade back to a fixed SL.
 
 ### Strategy helpers
 
@@ -354,12 +343,12 @@ Six runnable end-to-end examples live under [`examples/`](./examples/) — each 
 
 | File | Focus |
 | --- | --- |
-| [`01-quickstart.ts`](./examples/01-quickstart.ts) | Minimum viable backtest. |
-| [`02-strategy-helpers.ts`](./examples/02-strategy-helpers.ts) | `crossover` / `lookback` / `barsSince` / `resampleApply`. |
-| [`03-trailing-stop.ts`](./examples/03-trailing-stop.ts) | `buy({ trailPercent })`. |
-| [`04-optimize-grid.ts`](./examples/04-optimize-grid.ts) | `optimize()` + heatmap output. |
-| [`05-multi-panel-plot.ts`](./examples/05-multi-panel-plot.ts) | Multi-panel plot with an oscillator subplot. |
-| [`06-kelly-criterion.ts`](./examples/06-kelly-criterion.ts) | Kelly Criterion and trade-quality stats. |
+| [`01-quickstart.ts`](./examples/01-quickstart.ts) | Minimum viable backtest plus a standard HTML plot. |
+| [`02-order-management.ts`](./examples/02-order-management.ts) | Market orders with SL / TP brackets, tags, and active-trade stop updates. |
+| [`03-indicators-and-signals.ts`](./examples/03-indicators-and-signals.ts) | Indicator registration, boolean signals, and strategy helper functions. |
+| [`04-optimization.ts`](./examples/04-optimization.ts) | `optimize()` with constraints, sampled trials, custom scoring, and heatmap output. |
+| [`05-plotting.ts`](./examples/05-plotting.ts) | Multi-panel plotting with overlay and subplot indicators. |
+| [`06-trade-statistics.ts`](./examples/06-trade-statistics.ts) | `StatsIndex`, trade logs, and `finalizeTrades` behavior. |
 
 Run any of them with the `example` script (which builds first):
 

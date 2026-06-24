@@ -288,19 +288,22 @@ backtest.plot({
 `plotVolume: true`、`plotDrawdown: false`、`plotTrades: true`、
 `smoothEquity: false`、`relativeEquity: true`、`superimpose: true`、
 `resample: true`、`reverseIndicators: true`、`showLegend: true`。
+`smoothEquity` 目前僅作為 API parity 選項被接受；現行 Plotly renderer 尚未套用
+equity curve smoothing。
 
-破壞性變更遷移說明：
+目前行為說明：
 
-- `plotPrice` 已移除；OHLC panel 一律繪製。
-- `plotSuperimposedOhlc` 改為 `superimpose`。
-- `superimposedOhlcRule` 改為 `superimpose: 'W' | 'M' | 'Q' | 'Y'`。
+- OHLC panel 一律繪製。
+- `superimpose` 控制較大週期的 OHLC 疊圖；可傳入 `false`、`true`，或 `'W'`、`'M'`、`'Q'`、`'Y'` 等規則。
 - `plotPL` 控制 profit / loss panel；`plotTrades` 控制 OHLC panel 上的交易線段。
-- 期末未平倉交易預設不再強制關倉；若要納入交易統計與圖表交易數，請在 `BacktestOptions` 設定 `finalizeTrades: true`。
-- 數值型 `commission` 現在與 `backtesting.py` 對齊：進出場成交價不再被手續費改寫，手續費會在進場與出場時以現金費用扣除，相對下單數量會納入單位手續費，已平倉交易的 P/L 與報酬率也會扣除兩次手續費。
+- 期末未平倉交易預設維持 open 狀態；若要納入交易統計與圖表交易數，請在 `BacktestOptions` 設定 `finalizeTrades: true`。
+- 數值型 `commission` 會保留進出場成交價，並在進場與出場時以現金費用扣除；相對下單數量會納入單位手續費，已平倉交易的 P/L 與報酬率也會扣除兩次手續費。
+- `Strategy.buy()` / `Strategy.sell()` 接受 `size`、`limitPrice`、`stopPrice`、`slPrice`、`tpPrice`、`tag`。成交價由市價、限價、停損與 `tradeOnClose` 規則決定。
+- 若策略需要動態管理停損或停利，可在 `Strategy.next()` 中更新可寫入的 `trade.sl` / `trade.tp`。
 
 `addIndicator(name, values, options)` 接受：
 
-- `overlay: true`（預設）— 畫在價格面板上
+- `overlay: true`（預設）— 畫在 OHLC panel 上
 - `overlay: false` — 放在 volume 之後的獨立副圖（適合 RSI / MACD 等）
 - `color` — 任何 CSS 顏色字串，或多線指標使用的顏色陣列
 - `scatter: true` — 以 marker 而非連續線呈現
@@ -315,20 +318,6 @@ const result = await backtest.optimize({
 });
 new Plotting(result.best).plotHeatmap(result.heatmap, { filename: 'heatmap.html' });
 ```
-
-### 移動停損
-
-在 `buy()` / `sell()` 帶入 `trailPercent`（百分比，如 `0.05` 表 5%）或 `trailAmount`（絕對價差）即可掛上移動停損：
-
-```js
-// 多單，5% 移動停損：
-this.buy({ size: 1000, trailPercent: 0.05 });
-
-// 空單，$5 移動停損 + 固定初始底線：
-this.sell({ size: 1000, slPrice: 110, trailPercent: 0.05 });
-```
-
-每根 bar 會朝有利方向更新 SL（多 = `peakHigh * (1 - trailPercent)`、空 = `peakLow * (1 + trailPercent)`），絕不反向。可透過 `trade.isTrailing` 與 `trade.trailingDistance` 檢視狀態；指定 `trade.sl = price` 會將 trade 切回固定 SL 模式。
 
 ### 策略輔助函式
 
@@ -354,12 +343,12 @@ import { crossover, crossunder, lookback, barsSince, resampleApply } from 'node-
 
 | 檔案 | 重點 |
 | --- | --- |
-| [`01-quickstart.ts`](./examples/01-quickstart.ts) | 最小可行回測。 |
-| [`02-strategy-helpers.ts`](./examples/02-strategy-helpers.ts) | `crossover` / `lookback` / `barsSince` / `resampleApply`。 |
-| [`03-trailing-stop.ts`](./examples/03-trailing-stop.ts) | `buy({ trailPercent })` 移動停損。 |
-| [`04-optimize-grid.ts`](./examples/04-optimize-grid.ts) | `optimize()` 進階用法 + 熱力圖輸出。 |
-| [`05-multi-panel-plot.ts`](./examples/05-multi-panel-plot.ts) | 多面板圖表加上 oscillator 副圖。 |
-| [`06-kelly-criterion.ts`](./examples/06-kelly-criterion.ts) | Kelly Criterion 與交易品質指標。 |
+| [`01-quickstart.ts`](./examples/01-quickstart.ts) | 最小可行回測與標準 HTML 圖表輸出。 |
+| [`02-order-management.ts`](./examples/02-order-management.ts) | `market order`、`SL / TP bracket`、`tag`，以及持倉期間的停損更新。 |
+| [`03-indicators-and-signals.ts`](./examples/03-indicators-and-signals.ts) | `indicator` 註冊、`boolean signal` 與策略輔助函式。 |
+| [`04-optimization.ts`](./examples/04-optimization.ts) | `optimize()` 搭配 `constraint`、抽樣試算、自訂評分與熱力圖輸出。 |
+| [`05-plotting.ts`](./examples/05-plotting.ts) | 多面板圖表、`overlay indicator` 與 `subplot indicator`。 |
+| [`06-trade-statistics.ts`](./examples/06-trade-statistics.ts) | `StatsIndex`、交易紀錄與 `finalizeTrades` 行為。 |
 
 用 `example` script 執行（會先 build）：
 

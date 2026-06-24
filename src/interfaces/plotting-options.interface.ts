@@ -15,7 +15,7 @@ export interface PlottingOptions {
   plotDrawdown?: boolean;
   /** Render trade segments on the OHLC panel. Default `true`. */
   plotTrades?: boolean;
-  /** Smooth the equity curve between trade exits and key points. Default `false`. */
+  /** Accepted for API parity; the current Plotly renderer does not smooth equity yet. Default `false`. */
   smoothEquity?: boolean;
   /**
    * Display the equity panel as percentage gain/loss from the starting equity instead of

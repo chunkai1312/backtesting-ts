@@ -20,27 +20,27 @@ If you prefer to run files directly with `ts-node`, build once and skip the
 
 ```sh
 yarn build
-npx ts-node examples/04-optimize-grid.ts
+npx ts-node examples/04-optimization.ts
 ```
 
 ## What each example shows
 
 | File | Focus |
 | --- | --- |
-| [`01-quickstart.ts`](./01-quickstart.ts) | Minimum viable backtest: load OHLCV, declare a `SmaCross` strategy, run, and print stats. |
-| [`02-strategy-helpers.ts`](./02-strategy-helpers.ts) | Internal `crossover` / `crossunder` / `lookback` / `barsSince` / `resampleApply` helpers. |
-| [`03-trailing-stop.ts`](./03-trailing-stop.ts) | Long entry with `trailPercent` and the resulting trade log. |
-| [`04-optimize-grid.ts`](./04-optimize-grid.ts) | `optimize()` with `constraint` / `maxTries` / function-form `maximize` / `returnHeatmap` and a separate `plotHeatmap` HTML. |
-| [`05-multi-panel-plot.ts`](./05-multi-panel-plot.ts) | `addIndicator(..., { overlay: false })` to add an oscillator (ROC) subplot to the standard 5-panel plot. |
-| [`06-kelly-criterion.ts`](./06-kelly-criterion.ts) | Reading `Kelly Criterion` / `Win/Loss Ratio` / `Avg. Win [%]` / `Avg. Loss [%]` from the stats output. |
+| [`01-quickstart.ts`](./01-quickstart.ts) | Minimum viable backtest: load OHLCV, declare a `SmaCross` strategy, run, print stats, and write a standard plot. |
+| [`02-order-management.ts`](./02-order-management.ts) | Market orders with initial SL / TP brackets, tag metadata, and active-trade `sl` / `tp` updates. |
+| [`03-indicators-and-signals.ts`](./03-indicators-and-signals.ts) | `addIndicator()`, `addSignal()`, `crossover`, `crossunder`, `lookback`, `barsSince`, and `resampleApply`. |
+| [`04-optimization.ts`](./04-optimization.ts) | `optimize()` with `constraint`, `maxTries`, function-form `maximize`, `returnHeatmap`, and a separate `plotHeatmap` HTML. |
+| [`05-plotting.ts`](./05-plotting.ts) | Standard multi-panel plotting with overlay indicators, an oscillator subplot, return, drawdown, and volume panels. |
+| [`06-trade-statistics.ts`](./06-trade-statistics.ts) | Reading `StatsIndex`, inspecting `Stats.tradeLog`, and comparing default open-trade handling with `finalizeTrades`. |
 
 ## Output
 
 Some examples write HTML files into the project root:
 
-- `01-quickstart.ts` — would write `output.html` if you uncomment `stats.plot()`.
-- `04-optimize-grid.ts` — writes `optimize-heatmap.html`.
-- `05-multi-panel-plot.ts` — writes `output.html` with the standard Plotly chart plus a ROC subplot after volume.
+- `01-quickstart.ts` — writes `quickstart.html`.
+- `04-optimization.ts` — writes `optimization-heatmap.html`.
+- `05-plotting.ts` — writes `plotting.html` with the standard Plotly chart plus a ROC subplot.
 
 Open these in any modern browser. The plot's pan/zoom and hover-line are
 synchronized across panels.

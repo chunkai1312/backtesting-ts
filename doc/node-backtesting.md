@@ -5,6 +5,7 @@
 - [Class: Backtest](#class-backtest)
   - [Constructor: new Backtest(data, Strategy[, options])](#constructor-new-backtestdata-strategy-options)
   - [backtest.run()](#backtestrun)
+  - [backtest.optimize()](#backtestoptimizeoptions)
   - [backtest.print()](#backtestprint)
   - [backtest.plot()](#backtestplot)
 - [Class: Strategy](#class-strategy)
@@ -12,9 +13,9 @@
   - [strategy.next(context)](#strategynextcontext)
   - [strategy.buy(options)](#strategybuyoptions)
   - [strategy.sell(options)](#strategyselloptions)
-  - [strategy.addIndicator(name, values)](#strategyaddindicatorname-values)
+  - [strategy.addIndicator(name, values[, options])](#strategyaddindicatorname-values-options)
   - [strategy.getIndicator(name)](#strategygetindicatorname)
-  - [strategy.getSignal(name, values)](#strategyaddsignalname-values)
+  - [strategy.addSignal(name, values)](#strategyaddsignalname-values)
   - [strategy.getSignal(name)](#strategygetsignalname)
   - [strategy.data](#strategydata)
   - [strategy.equity](#strategyequity)
@@ -25,7 +26,7 @@
 - [Class: Position](#class-position)
   - [position.size](#positionsize)
   - [position.pl](#positionpl)
-  - [position.plPct](#positionplPct)
+  - [position.plPct](#positionplpct)
   - [position.isLong](#positionislong)
   - [position.isShort](#positionisshort)
   - [position.close()](#positioncloseportion)
@@ -35,6 +36,7 @@
   - [order.stop](#orderstop)
   - [order.sl](#ordersl)
   - [order.tp](#ordertp)
+  - [order.tag](#ordertag)
   - [order.isLong](#orderislong)
   - [order.isShort](#orderisshort)
   - [order.isContingent](#orderiscontingent)
@@ -45,8 +47,7 @@
   - [trade.exitPrice](#tradeexitprice)
   - [trade.entryBar](#tradeentrybar)
   - [trade.exitBar](#tradeexitbar)
-  - [trade.slOrder](#tradeslorder)
-  - [trade.tpOrder](#tradetporder)
+  - [trade.tag](#tradetag)
   - [trade.entryTime](#tradeentrytime)
   - [trade.exitTime](#tradeexittime)
   - [trade.isLong](#tradeislong)
@@ -68,11 +69,12 @@ This class represents a backtesting task that backtest a custom strategy on inpu
 - `Strategy` {Strategy} A custom trading strategy class, which inherits from `Strategy`.
 - `options` {Object}
   - `cash` {number} The initial cash. **Default:** `10000`.
-  - `commission` {number} The commission ratio. **Default:** `0`.
+  - `commission` {number} Relative commission rate charged as a cash fee on entry and exit. Entry/exit prices stay unadjusted; closed trade P/L and return are net of both fees. **Default:** `0`.
   - `margin` {number} The margin ratio required for a leveraged account. **Default:** `1`.
   - `tradeOnClose` {boolean} `true` if market orders will be filled based on the current bar's closing price instead of the next bar's open. **Default:** `false`.
   - `hedging` {boolean} Whether or not to allow trading in both long and short positions concurrently. `false` if the opposite-facing orders first close existing trades in a FIFO manner. **Default:** `false`.
   - `exclusiveOrders` {boolean} `true` if each new order automatically closes the previous trade or position, making at most a single trade (long or short) in effect at each time. **Default:** `false`.
+  - `finalizeTrades` {boolean} `true` closes final open trades on the last bar and includes them in closed trades, the trade log, trade statistics, and plotted trade counts. When `false`, final equity remains mark-to-market but final open trades are excluded from trade statistics. **Default:** `false`.
 
 Create a new `Backtest` instance.
 
@@ -121,7 +123,8 @@ matches the `backtesting.py`-like panel order: equity, profit/loss, OHLC, and
 volume. Supported plotting options include `filename`, `openBrowser`,
 `plotWidth`, `plotEquity`, `plotReturn`, `plotPL`, `plotVolume`, `plotDrawdown`,
 `plotTrades`, `smoothEquity`, `relativeEquity`, `superimpose`, `resample`,
-`reverseIndicators`, and `showLegend`.
+`reverseIndicators`, and `showLegend`. `smoothEquity` is accepted for API parity;
+the current Plotly renderer does not smooth the equity curve yet.
 
 ## Class: Strategy
 
@@ -149,26 +152,28 @@ Initialize the strategy to declare indicators and signals.
 ### `strategy.buy(options)`
 
 - `options` {Object}
-  - `size` {number} The size of the order.
-  - `limitPrice` {number} The limit price of the order.
-  - `stopPrice` {number} The stop price of the order.
-  - `slPrice` {number} The stop-loss price of the order.
-  - `tpPrice` {number} The take-profit price of the order.
-  - `price` {number} The price at which the trade is executed.
+  - `size` {number} The size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units.
+  - `limitPrice` {number} _optional._ The limit price of the order.
+  - `stopPrice` {number} _optional._ The stop trigger price of the order.
+  - `slPrice` {number} _optional._ Stop-loss price for the trade opened by this order.
+  - `tpPrice` {number} _optional._ Take-profit price for the trade opened by this order.
+  - `tag` {Record<string, string>} Metadata copied to the order and resulting trade.
 
-Place a new long order.
+Place a new long order. The broker determines execution price from bar data,
+order type, and `tradeOnClose`.
 
 ### `strategy.sell(options)`
 
 - `options` {Object}
-  - `size` {number} The size of the order.
-  - `limitPrice` {number} The limit price of the order.
-  - `stopPrice` {number} The stop price of the order.
-  - `slPrice` {number} The stop-loss price of the order.
-  - `tpPrice` {number} The take-profit price of the order.
-  - `price` {number} The price at which the trade is executed.
+  - `size` {number} The positive size of the order. Fractional values between `0` and `1` are interpreted as a fraction of available liquidity; values greater than or equal to `1` are absolute units.
+  - `limitPrice` {number} _optional._ The limit price of the order.
+  - `stopPrice` {number} _optional._ The stop trigger price of the order.
+  - `slPrice` {number} _optional._ Stop-loss price for the trade opened by this order.
+  - `tpPrice` {number} _optional._ Take-profit price for the trade opened by this order.
+  - `tag` {Record<string, string>} Metadata copied to the order and resulting trade.
 
-Place a new short order.
+Place a new short order. The broker stores short orders and trades with negative
+size internally.
 
 ### `strategy.addIndicator(name, values[, options])`
 
@@ -187,13 +192,6 @@ Add an indicator. Plotting options are stored separately from the values; `getIn
 - `name` {string} The indicator name.
 
 Get indicator values by name.
-
-### `strategy.getIndicatorOptions(name)`
-
-- `name` {string} The indicator name.
-- Returns: `{ overlay: boolean; color: string | string[]; scatter: boolean; plot: boolean } | undefined`
-
-Get the indicator's plotting options as supplied to `addIndicator()`. Returns `undefined` for unknown names.
 
 ### `strategy.addSignal(name, values)`
 
@@ -294,27 +292,33 @@ Order size (negative for short orders).
 
 ### order.limit
 
-- {number}
+- {number | undefined}
 
 Order limit price for limit orders, or `undefined` for market orders, which are filled at next available price.
 
 ### order.stop
 
-- {number}
+- {number | undefined}
 
 Order stop price for stop-limit/stop-market order, otherwise `undefined` if no stop was set, or the stop price has already been hit.
 
 ### order.sl
 
-- {number}
+- {number | undefined}
 
 A stop-loss price at which, if set, a new contingent stop-market order will be placed upon the `Trade` following this order's execution.
 
 ### order.tp
 
-- {number}
+- {number | undefined}
 
 A take-profit price at which, if set, a new contingent limit order will be placed upon the `Trade` following this order's execution.
+
+### order.tag
+
+- {Record<string, string> | undefined}
+
+Metadata passed with the order and copied to the resulting trade.
 
 ### order.isLong
 
@@ -370,18 +374,11 @@ Candlestick bar index of when the trade was entered.
 
 Candlestick bar index of when the trade was exited (or undefined if the trade is still active).
 
+### trade.tag
 
-### trade.slOrder
+- {Record<string, string> | undefined}
 
-- {Order}
-
-Get stop-loss order.
-
-### trade.tpOrder
-
-- {Order}
-
-Get take-profit order.
+Metadata inherited from the order that opened this trade.
 
 ### trade.entryTime
 
@@ -411,13 +408,13 @@ Datetime of when the trade was exited.
 
 - {number}
 
-Trade profit (positive) or loss (negative) in cash units.
+Trade profit (positive) or loss (negative) in cash units. Closed trades are net of entry and exit commissions.
 
 ### trade.plPct
 
 - {number}
 
-Trade profit (positive) or loss (negative) in percent.
+Trade profit (positive) or loss (negative) as a ratio. Closed trades are net of entry and exit commissions.
 
 ### trade.value
 
@@ -427,52 +424,23 @@ Trade total value in cash (volume * price).
 
 ### trade.sl
 
-- {number}
+- {number | undefined}
 
-Stop-loss price at which to close the trade.
+Stop-loss price at which to close the trade. Assigning a number creates or
+updates the internal contingent stop-loss order; assigning `undefined` or `0`
+cancels it.
 
 ### trade.tp
 
-- {number}
+- {number | undefined}
 
-Take-profit price at which to close the trade.
+Take-profit price at which to close the trade. Assigning a number creates or
+updates the internal contingent take-profit order; assigning `undefined` or `0`
+cancels it.
 
 ### trade.close()
 
 Place new `Order` to close `portion` of the trade at next market price.
-
-### trade.isTrailing
-
-- {boolean}
-
-`true` if the trade was opened with `trailPercent` or `trailAmount` and trailing has not been disabled (e.g. via fixed `trade.sl = price` assignment).
-
-### trade.trailPercent
-
-- {number | undefined}
-
-Trailing stop distance as a fraction of price, or `undefined` if not in trailing mode.
-
-### trade.trailAmount
-
-- {number | undefined}
-
-Trailing stop distance as an absolute price-unit difference, or `undefined` if not in trailing mode.
-
-### trade.trailingDistance
-
-- {number | undefined}
-
-Absolute distance between the current trailing peak (`peakHigh` for long, `peakLow` for short) and the active SL price. `undefined` when not trailing or no SL has been established yet.
-
-## Order trailing options
-
-In addition to `slPrice` / `tpPrice` / `limitPrice` / `stopPrice`, `OrderOptions` accepts:
-
-- `trailPercent` {number} — trailing distance as a fraction of price (e.g. `0.05` for 5%). Must satisfy `0 < trailPercent < 1`.
-- `trailAmount` {number} — trailing distance in absolute price units. Must be `> 0`.
-
-Supplying both throws `TypeError`. The resulting `Trade` ratchets its SL toward the favorable direction every bar (`peakHigh * (1 - trailPercent)` for long, `peakLow * (1 + trailPercent)` for short) and never moves backward.
 
 ## Strategy helpers
 
