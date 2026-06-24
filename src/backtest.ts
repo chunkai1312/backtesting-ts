@@ -11,6 +11,7 @@ import {
   OptimizeResult,
   OptimizeRun,
   ParamHeatmap,
+  PlottingOptions,
 } from './interfaces';
 import { StatsIndex } from './enums';
 import { mulberry32, sampleWithoutReplacement } from './utils/random';
@@ -47,6 +48,10 @@ export class Backtest {
    */
   public async run(options?: { params?: Record<string, number> }) {
     const data = this.data;
+    const {
+      finalizeTrades = false,
+      ...brokerOptions
+    } = this.options ?? {};
     const broker = new Broker(data, {
       cash: 10000,
       commission: 0,
@@ -54,7 +59,7 @@ export class Backtest {
       tradeOnClose: false,
       hedging: false,
       exclusiveOrders: false,
-      ...this.options,
+      ...brokerOptions,
     });
     const strategy = new this.Strategy(data, broker);
 
@@ -69,8 +74,10 @@ export class Backtest {
       broker.next();
       strategy.next(context as Context);
     }
-    broker.trades.forEach(t => t.close());
-    broker.last();
+    if (finalizeTrades) {
+      broker.trades.forEach(t => t.close());
+      broker.last();
+    }
 
     const stats = new Stats(
       data,
@@ -234,13 +241,13 @@ export class Backtest {
   }
 
   /**
-   * Plot the equity curve of the backtest run.
+   * Plot the backtest result chart.
    */
-  public plot() {
+  public plot(options?: PlottingOptions): Backtest {
     if (!this.stats) {
       throw new Error('First issue `backtest.run()` to obtain results');
     }
-    this.stats.plot();
+    this.stats.plot(options);
 
     return this;
   }

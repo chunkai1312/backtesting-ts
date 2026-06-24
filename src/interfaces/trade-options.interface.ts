@@ -6,6 +6,7 @@ export interface TradeOptions {
   entryBar: number;
   exitPrice?: number;
   exitBar?: number;
+  commission?: number;
   slOrder?: Order;
   tpOrder?: Order;
   tag?: Record<string, string>;

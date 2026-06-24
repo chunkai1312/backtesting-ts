@@ -92,14 +92,27 @@ describe('Backtest', () => {
       expect(backtest.stats).toBeDefined();
     });
 
-    it('should auto-close open trades that remain at the last bar', async () => {
-      const backtest = new Backtest(data, BuyAndHold, { cash: 1000000 });
+    it('should not finalize open trades by default while keeping final mark-to-market equity', async () => {
+      const backtest = new Backtest(cleanupData, BuyAndHold, { cash: 1000000 });
       const stats = await backtest.run();
-      expect(stats.tradeLog?.length).toBe(1);
+
+      expect(stats.results?.[StatsIndex.Trades]).toBe(0);
+      expect(stats.tradeLog?.length).toBe(0);
+      expect(stats.results?.[StatsIndex.EquityFinal]).toBe(1001000);
     });
 
-    it('should auto-close multiple open trades that remain at the last bar', async () => {
-      const backtest = new Backtest(cleanupData, MultipleOpenTrades, { cash: 1000000 });
+    it('should auto-close open trades at the last bar when finalizeTrades is true', async () => {
+      const backtest = new Backtest(cleanupData, BuyAndHold, { cash: 1000000, finalizeTrades: true });
+      const stats = await backtest.run();
+
+      expect(stats.results?.[StatsIndex.Trades]).toBe(1);
+      expect(stats.tradeLog?.length).toBe(1);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.PnL])).toEqual([1000]);
+      expect(stats.tradeLog?.map(t => t[TradeLogColumn.ExitBar])).toEqual([3]);
+    });
+
+    it('should auto-close multiple open trades that remain at the last bar when finalizeTrades is true', async () => {
+      const backtest = new Backtest(cleanupData, MultipleOpenTrades, { cash: 1000000, finalizeTrades: true });
       const stats = await backtest.run();
 
       expect(stats.results?.[StatsIndex.Trades]).toBe(2);
@@ -108,8 +121,8 @@ describe('Backtest', () => {
       expect(stats.tradeLog?.map(t => t[TradeLogColumn.ExitBar])).toEqual([3, 3]);
     });
 
-    it('should not skip cleanup close orders after a final-bar market order', async () => {
-      const backtest = new Backtest(cleanupData, FinalBarMarketOrderWithOpenTrades, { cash: 1000000 });
+    it('should not skip cleanup close orders after a final-bar market order when finalizeTrades is true', async () => {
+      const backtest = new Backtest(cleanupData, FinalBarMarketOrderWithOpenTrades, { cash: 1000000, finalizeTrades: true });
       const stats = await backtest.run();
 
       expect(stats.results?.[StatsIndex.Trades]).toBe(2);
@@ -383,8 +396,8 @@ describe('Backtest', () => {
       const backtest = new Backtest(data, SmaCross);
       await backtest.run();
       Stats.prototype.plot = jest.fn();
-      expect(backtest.plot()).toBeInstanceOf(Backtest);
-      expect(Stats.prototype.plot).toBeCalled();
+      expect(backtest.plot({ plotVolume: false })).toBeInstanceOf(Backtest);
+      expect(Stats.prototype.plot).toBeCalledWith({ plotVolume: false });
     });
 
     it('should throw error when missing results', () => {

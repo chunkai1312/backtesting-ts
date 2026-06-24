@@ -63,7 +63,7 @@ export class Broker {
   public newOrder(options: OrderOptions) {
     const { price, size, stopPrice, limitPrice, slPrice, tpPrice, parentTrade } = options;
     const isLong = size > 0;
-    const adjustedPrice = this.adjustPrice({ price, size });
+    const adjustedPrice = this.adjustPrice({ price });
 
     if (isLong) {
       if (!((limitPrice || stopPrice || adjustedPrice) > (slPrice || Number.NEGATIVE_INFINITY) && (limitPrice || stopPrice || adjustedPrice) < (tpPrice || Number.POSITIVE_INFINITY))) {
@@ -205,11 +205,12 @@ export class Broker {
         continue;
       }
 
-      const adjustedPrice = this.adjustPrice({ size: order.size, price });
+      const adjustedPrice = this.adjustPrice({ price });
+      const priceWithCommission = adjustedPrice + (this.commission({ size: order.size, price: adjustedPrice }) / Math.abs(order.size));
 
-      let size = order.size
+      let size = order.size;
       if (size > -1 && size < 1) {
-        size = Math.floor((this.marginAvailable * this._leverage * Math.abs(size)) / adjustedPrice) * Math.sign(size);
+        size = Math.floor((this.marginAvailable * this._leverage * Math.abs(size)) / priceWithCommission) * Math.sign(size);
         if (!size) {
           remove(this.orders, o => o === order);
           continue;
@@ -238,7 +239,7 @@ export class Broker {
         }
       }
 
-      if (Math.abs(needSize) * adjustedPrice > this.marginAvailable * this._leverage) {
+      if (Math.abs(needSize) * priceWithCommission > this.marginAvailable * this._leverage) {
         remove(this.orders, o => o === order);
         continue;
       }
@@ -265,13 +266,14 @@ export class Broker {
     if (reprocessOrders) this.processOrders();
   }
 
-  /**
-   * Long/short `price`, adjusted for commissions or user-defined trade execution price.
-   * In long positions, the commission-adjusted price for is a fraction higher, and vice versa.
-   */
-  private adjustPrice(options: { size: number, price?: number }) {
+  private adjustPrice(options: { price?: number }) {
+    const { price } = options;
+    return price || this.lastPrice;
+  }
+
+  private commission(options: { size: number, price: number }) {
     const { size, price } = options;
-    return (price || this.lastPrice) * (1 + (this._commission * Math.sign(size)));
+    return Math.abs(size) * price * this._commission;
   }
 
   private openTrade(options: {
@@ -285,6 +287,7 @@ export class Broker {
     trailAmount?: number,
   }) {
     const { price, size, sl, tp, timeIndex, tag, trailPercent, trailAmount } = options;
+    this._cash -= this.commission({ size, price });
 
     const trade = new Trade(this, {
       size,
@@ -315,13 +318,19 @@ export class Broker {
 
   private closeTrade(options: { trade: Trade, price: number, timeIndex: number }) {
     const { trade, price, timeIndex } = options;
+    const entryCommission = this.commission({ size: trade.size, price: trade.entryPrice });
+    const exitCommission = this.commission({ size: trade.size, price });
 
     remove(this.trades, t => t === trade);
     if (trade.slOrder) remove(this.orders, o => o === trade.slOrder);
     if (trade.tpOrder) remove(this.orders, o => o === trade.tpOrder);
 
-    this.closedTrades.push(trade.replace({ exitPrice: price, exitBar: timeIndex }));
-    this._cash += options.trade.pl;
+    this.closedTrades.push(trade.replace({
+      exitPrice: price,
+      exitBar: timeIndex,
+      commission: entryCommission + exitCommission,
+    }));
+    this._cash += (trade.size * (price - trade.entryPrice)) - exitCommission;
   }
 
   private reduceTrade(options: { trade: Trade, price: number, size: number, timeIndex: number }) {

@@ -15,6 +15,25 @@ describe('Broker', () => {
     jest.clearAllMocks();
   });
 
+  const baseOptions = (commission = 0) => ({
+    cash: 10000,
+    commission,
+    margin: 1,
+    tradeOnClose: false,
+    hedging: false,
+    exclusiveOrders: false,
+  });
+
+  const buildData = (bars: Array<{ open: number; high?: number; low?: number; close?: number }>) =>
+    new HistoricalData(bars.map((bar, i) => ({
+      date: new Date(2024, 0, i + 1).toISOString().slice(0, 10),
+      open: bar.open,
+      high: bar.high ?? bar.open,
+      low: bar.low ?? bar.open,
+      close: bar.close ?? bar.open,
+      volume: 0,
+    })));
+
   describe('constructor()', () => {
     it('should create a new broker', () => {
       const options = {
@@ -465,6 +484,58 @@ describe('Broker', () => {
       expect(broker.orders.length).toBe(1);
       broker.next();
       expect(broker.orders.length).toBe(0);
+    });
+  });
+
+  describe('commission accounting', () => {
+    it('should charge entry commission as cash without changing long entry price', () => {
+      data = buildData([{ open: 100 }, { open: 110 }]);
+      const broker = new Broker(data, baseOptions(0.002));
+
+      broker.newOrder({ size: 1 - Number.EPSILON });
+      broker.next();
+
+      const trade = broker.trades[0];
+      expect(trade.size).toBe(99);
+      expect(trade.entryPrice).toBe(100);
+      expect(broker.equities[0]).toBeCloseTo(10000 - (99 * 100 * 0.002), 10);
+    });
+
+    it('should include per-unit commission when sizing short relative orders', () => {
+      data = buildData([{ open: 100 }, { open: 110 }]);
+      const broker = new Broker(data, baseOptions(0.002));
+
+      broker.newOrder({ size: -(1 - Number.EPSILON) });
+      broker.next();
+
+      const trade = broker.trades[0];
+      expect(trade.size).toBe(-99);
+      expect(trade.entryPrice).toBe(100);
+      expect(broker.equities[0]).toBeCloseTo(10000 - (99 * 100 * 0.002), 10);
+    });
+
+    it('should charge exit commission and report net closed trade P/L', () => {
+      data = buildData([{ open: 100 }, { open: 110 }]);
+      const broker = new Broker(data, baseOptions(0.002));
+
+      broker.newOrder({ size: 1 - Number.EPSILON });
+      broker.next();
+      broker.trades[0].close();
+      broker.next();
+
+      const closedTrade = broker.closedTrades[0];
+      const entryCommission = 99 * 100 * 0.002;
+      const exitCommission = 99 * 110 * 0.002;
+      const grossPl = 99 * (110 - 100);
+      const totalCommission = entryCommission + exitCommission;
+
+      expect(closedTrade.size).toBe(99);
+      expect(closedTrade.entryPrice).toBe(100);
+      expect(closedTrade.exitPrice).toBe(110);
+      expect(closedTrade.commission).toBeCloseTo(totalCommission, 10);
+      expect(closedTrade.pl).toBeCloseTo(grossPl - totalCommission, 10);
+      expect(closedTrade.plPct).toBeCloseTo(0.1 - (totalCommission / (99 * 100)), 10);
+      expect(broker.equity).toBeCloseTo(10000 + grossPl - totalCommission, 10);
     });
   });
 

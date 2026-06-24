@@ -185,6 +185,13 @@ describe('Trade', () => {
       expect(trade.pl).toBe(pl);
     });
 
+    it('should subtract stored commissions from closed trade P/L', () => {
+      const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, commission: 4 };
+      const trade = new Trade(broker, options);
+      const grossPl = options.size * (options.exitPrice - options.entryPrice);
+      expect(trade.pl).toBe(grossPl - options.commission);
+    });
+
     it('should use last price to calculate when the trade is still active', () => {
       const options = { size: 10, entryPrice: 100, entryBar: 0 };
       const trade = new Trade(broker, options);
@@ -199,6 +206,14 @@ describe('Trade', () => {
       const trade = new Trade(broker, options);
       const plPct = Math.sign(options.size) * (options.exitPrice / options.entryPrice - 1);
       expect(trade.plPct).toBe(plPct);
+    });
+
+    it('should subtract stored commissions from closed trade return percent', () => {
+      const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, commission: 4 };
+      const trade = new Trade(broker, options);
+      const grossPlPct = Math.sign(options.size) * (options.exitPrice / options.entryPrice - 1);
+      const commissionPct = options.commission / (Math.abs(options.size) * options.entryPrice);
+      expect(trade.plPct).toBeCloseTo(grossPlPct - commissionPct, 10);
     });
 
     it('should use last price to calculate when the trade is still active', () => {
@@ -357,6 +372,15 @@ describe('Trade', () => {
       expect(trade.tag).toBe(options.tag);
       trade.replace(newOptions);
       expect(trade.tag).toBe(newOptions.tag);
+    });
+
+    it('should update the commission of the trade', () => {
+      const options = { size: 10, entryPrice: 100, entryBar: 0, exitPrice: 110, exitBar: 1, commission: 0 };
+      const trade = new Trade(broker, options);
+      const newOptions = { commission: 4 };
+      expect(trade.commission).toBe(options.commission);
+      trade.replace(newOptions);
+      expect(trade.commission).toBe(newOptions.commission);
     });
   });
 

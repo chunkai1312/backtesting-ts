@@ -9,6 +9,7 @@ export class Trade {
   private _exitPrice?: number;
   private _entryBar: number;
   private _exitBar?: number;
+  private _commission: number;
   private _slOrder?: Order;
   private _tpOrder?: Order;
   private _tag?: Record<string, string>;
@@ -23,6 +24,7 @@ export class Trade {
     this._exitPrice = options.exitPrice;
     this._entryBar = options.entryBar;
     this._exitBar = options.exitBar;
+    this._commission = options.commission ?? 0;
     this._slOrder = options.slOrder;
     this._tpOrder = options.tpOrder;
     this._tag = options.tag;
@@ -68,6 +70,13 @@ export class Trade {
    */
   get exitBar() {
     return this._exitBar;
+  }
+
+  /**
+   * Total entry and exit commissions attributed to this trade.
+   */
+  get commission() {
+    return this._commission;
   }
 
   /**
@@ -125,7 +134,7 @@ export class Trade {
    */
   get pl() {
     const price = this._exitPrice || this.broker.lastPrice;
-    return this._size * (price - this._entryPrice);
+    return this._size * (price - this._entryPrice) - this._commission;
   }
 
   /**
@@ -133,7 +142,8 @@ export class Trade {
    */
   get plPct() {
     const price = this._exitPrice || this.broker.lastPrice;
-    return Math.sign(this._size) * (price / this._entryPrice - 1);
+    const grossReturn = Math.sign(this._size) * (price / this._entryPrice - 1);
+    return grossReturn - (this._commission / (Math.abs(this._size) * this._entryPrice));
   }
 
   /**
@@ -297,6 +307,7 @@ export class Trade {
     if (options.exitPrice !== undefined) this._exitPrice = options.exitPrice;
     if (options.entryBar !== undefined) this._entryBar = options.entryBar;
     if (options.exitBar !== undefined) this._exitBar = options.exitBar;
+    if (options.commission !== undefined) this._commission = options.commission;
     if (options.slOrder !== undefined) this._slOrder = options.slOrder;
     if (options.tpOrder !== undefined) this._tpOrder = options.tpOrder;
     if (options.tag !== undefined) this._tag = options.tag;

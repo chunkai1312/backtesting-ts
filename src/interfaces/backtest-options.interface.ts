@@ -5,4 +5,5 @@ export interface BacktestOptions {
   tradeOnClose?: boolean;
   hedging?: boolean;
   exclusiveOrders?: boolean;
+  finalizeTrades?: boolean;
 }
