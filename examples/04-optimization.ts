@@ -1,15 +1,13 @@
 /**
- * 04 — Optimize a parameter grid
+ * 04 — Optimization
  *
  * Searches an SMA(n1, n2) grid using:
  *   - constraint:    skip combinations where n1 >= n2
- *   - maxTries:      sample at most 12 of the valid combinations
- *   - maximize:      a custom function = Sharpe / |MaxDrawdown|
+ *   - maxTries:      sample at most 12 valid combinations
+ *   - maximize:      custom objective = Sharpe / |MaxDrawdown|
  *   - returnHeatmap: collect a 2D parameter heatmap
  *
- * Then renders the heatmap to a separate HTML file via `Plotting.plotHeatmap`.
- *
- *   yarn example examples/04-optimize-grid.ts
+ *   yarn example examples/04-optimization.ts
  */
 
 import {
@@ -31,12 +29,12 @@ class SmaCross extends Strategy {
 
   init(): void {
     const close = this.data.close;
-    const a = SMA.calculate({ period: this.params.n1, values: close });
-    const b = SMA.calculate({ period: this.params.n2, values: close });
-    this.addIndicator('A', a);
-    this.addIndicator('B', b);
-    this.addSignal('up', crossover(this.getIndicator('A') as number[], this.getIndicator('B') as number[]));
-    this.addSignal('down', crossunder(this.getIndicator('A') as number[], this.getIndicator('B') as number[]));
+    const fast = SMA.calculate({ period: this.params.n1, values: close });
+    const slow = SMA.calculate({ period: this.params.n2, values: close });
+    this.addIndicator('fast', fast);
+    this.addIndicator('slow', slow);
+    this.addSignal('up', crossover(this.getIndicator('fast') as number[], this.getIndicator('slow') as number[]));
+    this.addSignal('down', crossunder(this.getIndicator('fast') as number[], this.getIndicator('slow') as number[]));
   }
 
   next(ctx: Context): void {
@@ -54,13 +52,13 @@ async function main(): Promise<void> {
       n1: [5, 10, 15, 20, 30],
       n2: [40, 60, 90, 120, 180],
     },
-    constraint: (p) => p.n1 < p.n2,
+    constraint: p => p.n1 < p.n2,
     maxTries: 12,
     seed: 42,
-    maximize: (results) => {
+    maximize: results => {
       const sharpe = Number(results[StatsIndex.SharpeRatio]) || 0;
-      const maxDD = Math.abs(Number(results[StatsIndex.MaxDrawdown]) || 1);
-      return sharpe / maxDD;
+      const maxDrawdown = Math.abs(Number(results[StatsIndex.MaxDrawdown]) || 1);
+      return sharpe / maxDrawdown;
     },
     returnHeatmap: true,
     returnAll: true,
@@ -70,12 +68,12 @@ async function main(): Promise<void> {
   console.log(`Best score (Sharpe / |MaxDD|): ${result.bestScore.toFixed(4)}`);
   console.log(`Combinations evaluated: ${result.all?.length ?? 0}`);
 
-  // Render the heatmap (Sharpe / |MaxDD|) over the (n1, n2) grid:
   if (result.heatmap) {
     new Plotting(result.best, { openBrowser: false }).plotHeatmap(result.heatmap, {
-      filename: 'optimize-heatmap.html',
+      filename: 'optimization-heatmap.html',
+      openBrowser: false,
     });
-    console.log('Wrote optimize-heatmap.html');
+    console.log('Wrote optimization-heatmap.html');
   }
 }
 

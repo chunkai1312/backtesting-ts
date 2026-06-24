@@ -1,8 +1,8 @@
 /**
  * 01 — Quickstart
  *
- * The minimum viable backtest: load OHLCV, declare a moving-average crossover
- * strategy, run, and print the stats.
+ * Load OHLCV, declare a moving-average crossover strategy, run the backtest,
+ * print stats, and write a standard HTML plot.
  *
  *   yarn example examples/01-quickstart.ts
  */
@@ -38,8 +38,8 @@ async function main(): Promise<void> {
   const backtest = new Backtest(data, SmaCross, { cash: 1_000_000, tradeOnClose: true });
   const stats = await backtest.run();
   stats.print();
-  // Uncomment to open an interactive HTML chart in your browser:
-  stats.plot();
+  stats.plot({ filename: 'quickstart.html', openBrowser: false });
+  console.log('Wrote quickstart.html');
 }
 
 if (require.main === module) {

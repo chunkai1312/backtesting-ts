@@ -13,11 +13,11 @@ import * as path from 'path';
 
 const EXAMPLES = [
   '01-quickstart',
-  '02-strategy-helpers',
-  '03-trailing-stop',
-  '04-optimize-grid',
-  '05-multi-panel-plot',
-  '06-kelly-criterion',
+  '02-order-management',
+  '03-indicators-and-signals',
+  '04-optimization',
+  '05-plotting',
+  '06-trade-statistics',
 ] as const;
 
 describe('examples smoke import', () => {
